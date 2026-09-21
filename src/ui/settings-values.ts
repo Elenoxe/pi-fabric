@@ -240,7 +240,7 @@ export const coerceValue = (id: string, value: string, config: FabricConfig): un
     return value === INHERIT_VALUE || value === PREWALK_MODEL_UNSET_LABEL ? "" : value;
   }
   if (id === "prewalk.thinking" && value === PREWALK_THINKING_INHERIT_LABEL) return "";
-  if (id === "agents.thinking" || id === "prewalk.thinking") {
+  if (id === "approvals.thinking" || id === "agents.thinking" || id === "prewalk.thinking") {
     return THINKING_LEVELS.find((level) => thinkingLabel(level) === value) ?? value;
   }
   return value;

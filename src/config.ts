@@ -77,6 +77,7 @@ export interface FabricApprovalConfig {
   model?: string;
   /** Exact action refs select a risk policy or direct approval mode. */
   overrides: Record<string, FabricApprovalOverride>;
+  thinking: FabricThinking;
 }
 
 /** Session-start background revalidation scope for the MCP descriptor cache:
@@ -384,6 +385,7 @@ export const DEFAULT_FABRIC_CONFIG: FabricConfig = {
     network: "allow",
     agent: "allow",
     overrides: {},
+    thinking: "minimal",
   },
   mcp: {
     enabled: true,
@@ -752,6 +754,7 @@ export const normalizeFabricConfig = (input: Record<string, unknown>): FabricCon
     : DEFAULT_FABRIC_CONFIG.agents.defaultTools;
   const approvalModel = normalizeJevApprovalModel(stringValue(approvals.model));
   const configuredApprovalOverrides = approvalOverrides(approvals.overrides);
+  const approvalThinking = thinkingValue(approvals.thinking, DEFAULT_FABRIC_CONFIG.approvals.thinking);
   const configPath = stringValue(mcp.configPath);
   const meshRoot = stringValue(mesh.root);
   const memoryIndexDir = stringValue(memory.indexDir);
@@ -907,6 +910,7 @@ export const normalizeFabricConfig = (input: Record<string, unknown>): FabricCon
       execute: approvalMode(approvals.execute, DEFAULT_FABRIC_CONFIG.approvals.execute),
       network: approvalMode(approvals.network, DEFAULT_FABRIC_CONFIG.approvals.network),
       agent: approvalMode(approvals.agent, DEFAULT_FABRIC_CONFIG.approvals.agent),
+      thinking: approvalThinking,
       ...(approvalModel ? { model: approvalModel } : {}),
       overrides: configuredApprovalOverrides,
     },

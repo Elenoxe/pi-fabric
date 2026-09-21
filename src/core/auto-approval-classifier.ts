@@ -7,6 +7,7 @@ import { jevClassifierKey, resolveJevClassifierTarget } from "../jev/routes.js";
 import type { JevQuestion } from "../jev/types.js";
 import { resolveApprovalModel } from "./approval-model.js";
 import type { ResolvedFabricAction } from "./action-registry.js";
+import type { FabricThinking } from "../thinking.js";
 
 const MAX_TRANSCRIPT_CHARS = 24_000;
 const MAX_ARGUMENT_CHARS = 16_000;
@@ -362,6 +363,7 @@ export class FabricAutoApprovalClassifier {
     args: Record<string, unknown>,
     context: ExtensionContext,
     modelKey?: string,
+    thinking: FabricThinking = "minimal",
   ): Promise<FabricAutoApprovalDecision> {
     context.signal?.throwIfAborted();
     if (modelKey && isJevApprovalModel(modelKey)) return this.#classifyJev(action, args, context, modelKey);
@@ -401,7 +403,7 @@ export class FabricAutoApprovalClassifier {
         ...(auth.headers ? { headers: auth.headers } : {}),
         ...(auth.env ? { env: auth.env } : {}),
         ...(context.signal ? { signal: context.signal } : {}),
-        ...(model.reasoning ? { reasoning: "minimal" as const } : {}),
+        ...(model.reasoning && thinking !== "off" ? { reasoning: thinking } : {}),
         maxTokens: 512,
         maxRetries: 0,
         timeoutMs: CLASSIFIER_TIMEOUT_MS,

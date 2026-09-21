@@ -95,6 +95,7 @@ describe("direct Pi tool approvals", () => {
       { command: "pnpm test" },
       noUiContext,
       undefined,
+      "minimal",
     );
     expect(approval.takeUsage(call.toolCallId)).toEqual(usage);
     expect(approval.takeUsage(call.toolCallId)).toBeUndefined();

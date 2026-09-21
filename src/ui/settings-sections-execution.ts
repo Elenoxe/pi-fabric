@@ -11,6 +11,7 @@ import {
   stringInputSubmenu,
   modelPickerSubmenu,
   listSubmenu,
+  thinkingSubmenu,
 } from "./settings-submenus.js";
 import {
   BOOLEANS,
@@ -29,6 +30,7 @@ import {
   APPROVAL_OVERRIDE_INHERIT_VALUE,
 } from "./settings-values.js";
 import { maxExecutorMemoryLimitBytes } from "../config.js";
+import { thinkingLabel } from "../thinking.js";
 import { INHERIT_VALUE } from "./model-picker.js";
 
 export const buildFullCodeModeSection = (
@@ -300,6 +302,15 @@ export const buildApprovalsSection = (
             },
           ),
         }),
+        ...(!isJevApprovalModel(config.approvals.model) ? [
+          setting("approvals.thinking", "Thinking", thinkingLabel(config.approvals.thinking), {
+            description: "Reasoning effort for ordinary Pi auto-mode classifiers. Off omits reasoning; non-reasoning models ignore this setting.",
+            submenu: thinkingSubmenu(theme, {
+              title: "Auto approval thinking",
+              description: "Reasoning effort forwarded to reasoning-capable Pi classifiers. Off omits reasoning.",
+            }),
+          }),
+        ] : []),
         ...(isJevApprovalModel(config.approvals.model) ? [
           setting("jev.autoApprovalThreshold", "Jev minimum probability", String(config.jev.autoApprovalThreshold), {
             description: "Minimum safety probability for automatic approval (0–1, default 0.50). Lower values allow more actions; secrets and destructive verdicts still escalate. Errors still require approval.",

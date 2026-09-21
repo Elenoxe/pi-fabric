@@ -139,6 +139,11 @@ describe("Fabric configuration", () => {
       "pi.read": "allow",
     });
   });
+  it("defaults and validates approval classifier thinking", () => {
+    expect(DEFAULT_FABRIC_CONFIG.approvals.thinking).toBe("minimal");
+    expect(normalizeFabricConfig({ approvals: { thinking: "low" } }).approvals.thinking).toBe("low");
+    expect(normalizeFabricConfig({ approvals: { thinking: "invalid" } }).approvals.thinking).toBe("minimal");
+  });
 
   it("normalizes executor timeout ceilings and per-ref floors", () => {
     const normalized = normalizeFabricConfig({

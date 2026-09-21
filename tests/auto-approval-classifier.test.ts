@@ -91,6 +91,7 @@ describe("FabricAutoApprovalClassifier", () => {
       { command: "pnpm test" },
       ctx,
       "anthropic/classifier",
+      "low",
     );
 
     expect(result).toEqual({
@@ -109,7 +110,7 @@ describe("FabricAutoApprovalClassifier", () => {
     expect(evidence).not.toContain("HOSTILE OUTPUT");
     expect(invocation[2]).toMatchObject({
       apiKey: "secret",
-      reasoning: "minimal",
+      reasoning: "low",
       maxTokens: 512,
       maxRetries: 0,
       sessionId: "session-1",
@@ -144,7 +145,30 @@ describe("FabricAutoApprovalClassifier", () => {
     expect(completeSimple.mock.calls[0]![0]).toMatchObject({ provider: "openai-codex", id: "codex-auto-review" });
   });
 
-  it("dispatches custom APIs through Pi's native provider runtime", async () => {
+  it("omits reasoning when approval thinking is off", async () => {
+    completeSimple.mockResolvedValue({
+      stopReason: "toolUse",
+      content: [{
+        type: "toolCall",
+        id: "decision",
+        name: "classify_result",
+        arguments: { decision: "allow", reason: "Routine local test command" },
+      }],
+      usage,
+    });
+
+    await new FabricAutoApprovalClassifier().classify(
+      action,
+      { command: "pnpm test" },
+      context(),
+      "anthropic/classifier",
+      "off",
+    );
+
+    expect(completeSimple.mock.calls[0]![2]).not.toHaveProperty("reasoning");
+  });
+
+  it("dispatches custom APIs through native provider runtime", async () => {
     const customModel = {
       ...model,
       provider: "custom-provider",
@@ -181,6 +205,7 @@ describe("FabricAutoApprovalClassifier", () => {
       expect.objectContaining({ tools: [expect.objectContaining({ name: "classify_result" })] }),
       expect.objectContaining({ apiKey: "secret", maxTokens: 512 }),
     );
+    expect((streamSimple.mock.calls[0] as unknown[])[2]).not.toHaveProperty("reasoning");
     expect(providerResult).toHaveBeenCalledOnce();
     expect(completeSimple).not.toHaveBeenCalled();
   });

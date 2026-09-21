@@ -133,6 +133,7 @@ export class ApprovalController {
           args,
           this.context,
           this.config.model,
+          this.config.thinking,
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

@@ -389,6 +389,7 @@ An `auto` policy sends each validated call and its prepared arguments to a separ
 {
   "approvals": {
     "model": "anthropic/claude-opus-4-6",
+    "thinking": "minimal",
     "write": "auto",
     "execute": "auto",
     "network": "auto",
@@ -398,6 +399,7 @@ An `auto` policy sends each validated call and its prepared arguments to a separ
 ```
 
 Choose **Inherit** in the model picker to omit `approvals.model` and use the active Pi session model. Built-in and custom models dispatch through Pi's effective provider runtime, including providers with custom API identifiers. Older supported Pi versions fall back to their compatibility provider registry. Read access stays independently configurable, and most setups leave it at `allow`.
+For ordinary Pi classifiers, `approvals.thinking` selects the reasoning effort (`"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`, or `"max"`); it defaults to `"minimal"`. `"off"` omits the reasoning option, and models without reasoning ignore the setting. Jev uses its typed threshold path and does not use `approvals.thinking`.
 
 When `/login openai-codex` makes an `openai-codex-responses` model template available, **Approvals → Auto model** also offers `openai-codex/codex-auto-review`. Fabric derives this classifier-only entry from that template, so it is absent when Codex is unavailable and does not appear in ordinary `/model`, agent, or actor model pickers. A real registered model with that exact key takes precedence in both the approval picker and runtime.
 

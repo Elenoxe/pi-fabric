@@ -965,6 +965,7 @@ return Promise.all([
       { value: "next" },
       expect.anything(),
       undefined,
+      "minimal",
     );
     expect(invoke).toHaveBeenCalledOnce();
     expect(result.usage).toEqual(usage);

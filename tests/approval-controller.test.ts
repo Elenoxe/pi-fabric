@@ -23,6 +23,7 @@ const policies = {
   network: "ask" as const,
   agent: "ask" as const,
   overrides: {},
+  thinking: "minimal" as const,
 };
 const tuiContext = (
   custom: (...args: unknown[]) => Promise<unknown>,
@@ -82,7 +83,7 @@ describe("ApprovalController", () => {
 
     await controller.approve(action, { path: "workspace" });
 
-    expect(classify).toHaveBeenCalledWith(action, { path: "workspace" }, expect.anything(), undefined);
+    expect(classify).toHaveBeenCalledWith(action, { path: "workspace" }, expect.anything(), undefined, "minimal");
   });
 
   it("keeps exact ask grants scoped to their action ref", async () => {
@@ -188,7 +189,7 @@ describe("ApprovalController", () => {
     }));
     const classifier = { classify } as unknown as FabricAutoApprovalClassifier;
     const controller = new ApprovalController(
-      { ...policies, write: "auto", model: "anthropic/classifier" },
+      { ...policies, write: "auto", model: "anthropic/classifier", thinking: "low" },
       { hasUI: false } as ExtensionContext,
       new FabricSessionApprovals(),
       classifier,
@@ -202,6 +203,7 @@ describe("ApprovalController", () => {
       args,
       expect.anything(),
       "anthropic/classifier",
+      "low",
     );
   });
 

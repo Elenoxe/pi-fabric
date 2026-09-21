@@ -11,9 +11,11 @@ import type { FabricState } from "../src/fabric-state.js";
 import { FabricModelSelector } from "../src/ui/fabric-model-selector.js";
 import { buildFabricSettingsItems, openFabricSettings } from "../src/ui/settings.js";
 import { ProbabilityInputSubmenu, SectionSubmenu } from "../src/ui/settings-submenus.js";
+import { coerceValue } from "../src/ui/settings-values.js";
 
 const theme = { fg: (_: string, text: string) => text, bg: (_: string, text: string) => text, bold: (text: string) => text } as unknown as Theme;
 const thresholdId = "jev.autoApprovalThreshold";
+const thinkingId = "approvals.thinking";
 const fixture = (model?: string, models: Array<{ provider: string; id: string; name?: string; api?: string }> = []) => {
   const config = normalizeFabricConfig({ approvals: { model } });
   const apply = vi.fn((id: string, value: unknown) => {
@@ -21,6 +23,7 @@ const fixture = (model?: string, models: Array<{ provider: string; id: string; n
       if (value) config.approvals.model = String(value);
       else delete config.approvals.model;
     } else if (id === thresholdId) config.jev.autoApprovalThreshold = value as number;
+    else if (id === thinkingId) config.approvals.thinking = value as typeof config.approvals.thinking;
   });
   const items = buildFabricSettingsItems(theme, config, apply, { keepVisibleCandidates: [], modelSource: { models, lastUsed: {} } });
   const open = () => items.find(item => item.id === "approvals")!.submenu!("", () => {}) as SectionSubmenu;
@@ -69,6 +72,16 @@ describe("Jev approval probability settings", () => {
     const row = open().items.find(item => item.id === thresholdId);
     expect(Boolean(row)).toBe(Boolean(model && isJevApprovalModel(model)));
     if (row) expect(row.currentValue).toBe("0.5");
+  });
+  it.each([undefined, "anthropic/chat", "pi-fabric/typesafe/jev-latest", "pi-fabric/openrouter/jev-latest", "pi-fabric/vercel-ai-gateway/jev-latest"])("shows reasoning only for ordinary Pi classifiers: %s", model => {
+    const { config, open } = fixture(model);
+    const row = open().items.find(item => item.id === thinkingId);
+    expect(Boolean(row)).toBe(!isJevApprovalModel(config.approvals.model));
+    if (row) expect(row.currentValue).toBe("Minimal");
+  });
+
+  it("coerces labeled approval thinking to its canonical value", () => {
+    expect(coerceValue(thinkingId, "Low", normalizeFabricConfig({}))).toBe("low");
   });
 
   it("refreshes immediately on model selection and retains exact values when hidden or reopened", () => {
