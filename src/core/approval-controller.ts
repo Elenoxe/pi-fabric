@@ -43,6 +43,11 @@ type ApprovalChoice = "allow-once" | "allow-session" | "deny";
 const onceLabel = "Allow once";
 const sessionLabel = (risk: FabricRisk): string =>
   `Allow ${risk} access for this session`;
+const approvalRequestLabel = (action: ResolvedFabricAction, approvalRisk: FabricRisk): string =>
+  approvalRisk === action.risk
+    ? `${action.ref} requests ${action.risk} access`
+    : `${action.ref} requests ${approvalRisk} approval · Declared action risk: ${action.risk}`;
+
 
 export class FabricSessionApprovals {
   readonly approvedRisks = new Set<FabricRisk>();
@@ -98,31 +103,42 @@ export class ApprovalController {
     args: Record<string, unknown> = {},
   ): Promise<void> {
     const override = this.config.overrides[action.ref];
-    const exact = override !== undefined;
-    const mode: FabricApprovalMode = override === undefined
-      ? this.config[action.risk]
-      : override === "allow" || override === "ask" || override === "auto" || override === "deny"
+    const riskOverride =
+      override === "read" ||
+      override === "write" ||
+      override === "execute" ||
+      override === "network" ||
+      override === "agent"
         ? override
-        : this.config[override];
-
+        : undefined;
+    const directMode =
+      override === "allow" ||
+      override === "ask" ||
+      override === "auto" ||
+      override === "deny"
+        ? override
+        : undefined;
+    const approvalRisk = riskOverride ?? action.risk;
+    const exactPolicy = directMode !== undefined;
+    const mode: FabricApprovalMode = directMode ?? this.config[approvalRisk];
     // This is an immutable host capability, not a model/configurable network grant.
     if (action.risk === "network" && this.brokeredNetwork?.(action.provider) === true) return;
     if (mode === "allow") return;
     if (mode === "deny") {
-      throw new FabricTraceSafeError(`${action.ref} is denied by the Fabric ${action.risk} policy`);
+      throw new FabricTraceSafeError(`${action.ref} is denied by the Fabric ${approvalRisk} policy`);
     }
     if (
-      !exact &&
+      !exactPolicy &&
       !this.brokeredNetwork &&
-      (this.#inheritedRisks.has(action.risk) || this.sessionApprovals.approvedRisks.has(action.risk))
+      (this.#inheritedRisks.has(approvalRisk) || this.sessionApprovals.approvedRisks.has(approvalRisk))
     ) return;
 
     await this.sessionApprovals.serialize(async () => {
-      if (exact
+      if (exactPolicy
         ? this.sessionApprovals.approvedRefs.has(action.ref)
-        : this.sessionApprovals.approvedRisks.has(action.risk)) return;
+        : this.sessionApprovals.approvedRisks.has(approvalRisk)) return;
       if (mode !== "auto") {
-        await this.#requestApproval(action, exact);
+        await this.#requestApproval(action, exactPolicy, approvalRisk);
         return;
       }
 
@@ -147,7 +163,8 @@ export class ApprovalController {
         });
         await this.#requestApproval(
           action,
-          exact,
+          exactPolicy,
+          approvalRisk,
           `Auto mode could not determine safety: ${message}`,
         );
         return;
@@ -165,7 +182,8 @@ export class ApprovalController {
       if (decision.decision === "allow") return;
       await this.#requestApproval(
         action,
-        exact,
+        exactPolicy,
+        approvalRisk,
         `Auto mode escalated (${decision.model}): ${decision.reason}`,
       );
     });
@@ -173,7 +191,8 @@ export class ApprovalController {
 
   async #requestApproval(
     action: ResolvedFabricAction,
-    exact: boolean,
+    exactPolicy: boolean,
+    approvalRisk: FabricRisk,
     escalationReason?: string,
   ): Promise<void> {
     if (!this.context.hasUI) {
@@ -182,24 +201,24 @@ export class ApprovalController {
 
     const notification = escalationReason
       ? `Fabric auto mode needs approval: ${action.ref} · ${escalationReason}`
-      : `Fabric permission requested: ${action.ref} needs ${action.risk} access`;
+      : `Fabric permission requested: ${approvalRequestLabel(action, approvalRisk)}`;
     this.context.ui.notify(notification, "warning");
     const choice = this.context.mode === "tui"
-      ? await this.#requestTuiApproval(action, exact, escalationReason)
-      : await this.#requestDialogApproval(action, exact, escalationReason);
+      ? await this.#requestTuiApproval(action, exactPolicy, approvalRisk, escalationReason)
+      : await this.#requestDialogApproval(action, exactPolicy, approvalRisk, escalationReason);
 
     if (choice === "deny") {
-      this.context.ui.notify(`Denied ${action.risk} access for ${action.ref}`, "warning");
-      throw new FabricTraceSafeError(`User denied ${action.risk} access for ${action.ref}`);
+      this.context.ui.notify(`Denied ${approvalRisk} access for ${action.ref}`, "warning");
+      throw new FabricTraceSafeError(`User denied ${approvalRisk} access for ${action.ref}`);
     }
     if (choice === "allow-session") {
-      if (exact) {
+      if (exactPolicy) {
         this.sessionApprovals.approvedRefs.add(action.ref);
         this.context.ui.notify(`Allowed ${action.ref} for this Pi session`, "info");
       } else {
-        this.sessionApprovals.approvedRisks.add(action.risk);
+        this.sessionApprovals.approvedRisks.add(approvalRisk);
         this.context.ui.notify(
-          `Allowed ${action.risk} access for this Pi session`,
+          `Allowed ${approvalRisk} access for this Pi session`,
           "info",
         );
       }
@@ -210,13 +229,14 @@ export class ApprovalController {
 
   async #requestDialogApproval(
     action: ResolvedFabricAction,
-    exact: boolean,
+    exactPolicy: boolean,
+    approvalRisk: FabricRisk,
     escalationReason?: string,
   ): Promise<ApprovalChoice> {
-    const session = exact ? `Allow ${action.ref} for this session` : sessionLabel(action.risk);
+    const session = exactPolicy ? `Allow ${action.ref} for this session` : sessionLabel(approvalRisk);
     const picked = await this.context.ui.select(
       [
-        `Pi Fabric permission · ${action.ref} requests ${action.risk} access. ${action.description}`,
+        `Pi Fabric permission · ${approvalRequestLabel(action, approvalRisk)}. ${action.description}`,
         escalationReason,
       ].filter(Boolean).join(" · "),
       [onceLabel, session, "Deny"],
@@ -228,7 +248,8 @@ export class ApprovalController {
 
   async #requestTuiApproval(
     action: ResolvedFabricAction,
-    exact: boolean,
+    exactPolicy: boolean,
+    approvalRisk: FabricRisk,
     escalationReason?: string,
   ): Promise<ApprovalChoice> {
     const choice = await this.context.ui.custom<ApprovalChoice>((tui, theme, _keybindings, done) => {
@@ -241,7 +262,7 @@ export class ApprovalController {
       container.addChild(new Spacer(1));
       container.addChild(
         new Text(
-          theme.fg("text", `${action.ref} requests ${action.risk} access.`),
+          theme.fg("text", `${approvalRequestLabel(action, approvalRisk)}.`),
           1,
           0,
         ),
@@ -258,7 +279,7 @@ export class ApprovalController {
         new Text(
           theme.fg(
             "dim",
-            exact
+            exactPolicy
               ? "Choose whether to allow only this call or this exact action for the session."
               : "Choose whether to allow only this call or this risk class for the session.",
           ),
@@ -275,8 +296,8 @@ export class ApprovalController {
         },
         {
           value: "allow-session",
-          label: exact ? `Allow ${action.ref} for this session` : sessionLabel(action.risk),
-          description: exact
+          label: exactPolicy ? `Allow ${action.ref} for this session` : sessionLabel(approvalRisk),
+          description: exactPolicy
             ? "Do not ask again for this exact action until the Pi session ends"
             : "Do not ask again for this risk class until the Pi session ends",
         },

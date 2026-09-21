@@ -52,12 +52,29 @@ describe("ApprovalController", () => {
     expect(notify).toHaveBeenCalledWith("Allowed once: demo.write", "info");
     expect(notify).toHaveBeenCalledWith("Allowed once: demo.writeAgain", "info");
   });
-  it("uses an exact token override before the action risk policy", async () => {
+  it("uses a risk override to select the remapped approval policy", async () => {
     const controller = new ApprovalController(
       { ...policies, read: "allow", write: "deny", overrides: { "demo.write": "read" } },
       { hasUI: false } as ExtensionContext,
     );
     await expect(controller.approve(action)).resolves.toBeUndefined();
+  });
+
+  it("stores a remapped risk override as a broad session grant", async () => {
+    const custom = vi.fn(async () => "allow-session");
+    const session = new FabricSessionApprovals();
+    const controller = new ApprovalController(
+      { ...policies, read: "ask", write: "deny", overrides: { "demo.write": "read" } },
+      tuiContext(custom),
+      session,
+    );
+
+    await controller.approve(action);
+    await controller.approve({ ...action, ref: "demo.read", name: "read", risk: "read", description: "Read data" });
+
+    expect(custom).toHaveBeenCalledOnce();
+    expect(session.approvedRisks).toContain("read");
+    expect(session.approvedRefs).not.toContain("demo.write");
   });
 
   it("passes the original action metadata to exact auto approval", async () => {
