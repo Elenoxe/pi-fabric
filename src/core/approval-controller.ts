@@ -72,6 +72,8 @@ export class FabricSessionApprovals {
 export interface FabricAutoApprovalAudit {
   action: string;
   risk: FabricRisk;
+  /** Effective risk policy used for approval; declared risk remains in `risk`. */
+  approvalRisk?: FabricRisk;
   decision: "allow" | "escalate";
   reason: string;
   model?: string;
@@ -121,11 +123,12 @@ export class ApprovalController {
     const approvalRisk = riskOverride ?? action.risk;
     const exactPolicy = directMode !== undefined;
     const mode: FabricApprovalMode = directMode ?? this.config[approvalRisk];
+    const auditApprovalRisk = approvalRisk !== action.risk ? { approvalRisk } : {};
     // This is an immutable host capability, not a model/configurable network grant.
     if (action.risk === "network" && this.brokeredNetwork?.(action.provider) === true) return;
     if (mode === "allow") return;
     if (mode === "deny") {
-      throw new FabricTraceSafeError(`${action.ref} is denied by the Fabric ${approvalRisk} policy`);
+      throw new FabricTraceSafeError(`${action.ref} is denied by ${exactPolicy ? "exact approval override" : `the Fabric ${approvalRisk} policy`}`);
     }
     if (
       !exactPolicy &&
@@ -156,6 +159,7 @@ export class ApprovalController {
         this.onAutoDecision?.({
           action: action.ref,
           risk: action.risk,
+          ...auditApprovalRisk,
           decision: "escalate",
           reason: "Classifier unavailable; explicit approval required",
           error: message,
@@ -172,6 +176,7 @@ export class ApprovalController {
       this.onAutoDecision?.({
         action: action.ref,
         risk: action.risk,
+        ...auditApprovalRisk,
         decision: decision.decision,
         reason: decision.reason,
         model: decision.model,

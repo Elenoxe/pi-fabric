@@ -256,6 +256,7 @@ export class FabricExecutionService {
       const operation = traceRecorder.issueCall("fabric.approval.auto", {
         action: audit.action,
         risk: audit.risk,
+        ...(audit.approvalRisk !== undefined ? { approvalRisk: audit.approvalRisk } : {}),
       });
       operation.succeed(audit);
       if (decision) classifierUsages.push(decision.usage);

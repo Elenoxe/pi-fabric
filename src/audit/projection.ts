@@ -175,6 +175,7 @@ export const projectFabricAuditArgs = (
       return projected(args, (output) => {
         copyIdentifier(output, args, "action");
         copyIdentifier(output, args, "risk");
+        copyIdentifier(output, args, "approvalRisk");
       });
     case "fabric.discovery.catalog":
       return projected(args, (output) => {
@@ -292,6 +293,7 @@ export const projectFabricAuditResult = (
     return projected(record, (output) => {
       copyIdentifier(output, record, "action");
       copyIdentifier(output, record, "risk");
+      copyIdentifier(output, record, "approvalRisk");
       copyIdentifier(output, record, "decision");
       copyIdentifier(output, record, "model");
       copyNumber(output, record, "at");
