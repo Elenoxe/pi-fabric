@@ -116,6 +116,33 @@ describe("FabricAutoApprovalClassifier", () => {
       sessionId: "session-1",
     });
   });
+
+  it("forwards reasoning off to a Pi model that supports off", async () => {
+    completeSimple.mockResolvedValue({
+      stopReason: "toolUse",
+      content: [{
+        type: "toolCall",
+        id: "decision",
+        name: "classify_result",
+        arguments: { decision: "allow", reason: "No reasoning requested" },
+      }],
+      usage,
+    });
+    const offModel = { ...model, thinkingLevelMap: { off: "off" } };
+    const ctx = context();
+    Object.assign(ctx, { model: offModel });
+    Object.assign(ctx.modelRegistry, { find: vi.fn(() => offModel) });
+
+    await new FabricAutoApprovalClassifier().classify(
+      action,
+      { command: "pnpm test" },
+      ctx,
+      undefined,
+      "off",
+    );
+
+    expect(completeSimple.mock.calls[0]![2]).toMatchObject({ reasoning: "off" });
+  });
   it("derives the hidden Codex classifier from a registered Responses template", async () => {
     completeSimple.mockResolvedValue({
       stopReason: "toolUse",

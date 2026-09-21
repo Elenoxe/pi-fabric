@@ -60,6 +60,15 @@ describe("ApprovalController", () => {
     await expect(controller.approve(action)).resolves.toBeUndefined();
   });
 
+  it("reports the remapped policy when a risk override denies", async () => {
+    const controller = new ApprovalController(
+      { ...policies, read: "deny", write: "allow", overrides: { "demo.write": "read" } },
+      { hasUI: false } as ExtensionContext,
+    );
+
+    await expect(controller.approve(action)).rejects.toThrow("denied by the Fabric read policy");
+  });
+
   it("stores a remapped risk override as a broad session grant", async () => {
     const custom = vi.fn(async () => "allow-session");
     const session = new FabricSessionApprovals();
@@ -75,6 +84,18 @@ describe("ApprovalController", () => {
     expect(custom).toHaveBeenCalledOnce();
     expect(session.approvedRisks).toContain("read");
     expect(session.approvedRefs).not.toContain("demo.write");
+  });
+
+  it("reuses a broad read grant for a write action remapped to read", async () => {
+    const session = new FabricSessionApprovals();
+    session.approvedRisks.add("read");
+    const controller = new ApprovalController(
+      { ...policies, read: "ask", write: "deny", overrides: { "demo.write": "read" } },
+      { hasUI: false } as ExtensionContext,
+      session,
+    );
+
+    await expect(controller.approve(action)).resolves.toBeUndefined();
   });
 
   it("passes the original action metadata to exact auto approval", async () => {
@@ -101,6 +122,37 @@ describe("ApprovalController", () => {
     await controller.approve(action, { path: "workspace" });
 
     expect(classify).toHaveBeenCalledWith(action, { path: "workspace" }, expect.anything(), undefined, "minimal");
+  });
+
+  it("records the effective approval risk without changing declared risk", async () => {
+    const classify = vi.fn(async () => ({
+      decision: "allow" as const,
+      reason: "Safe",
+      model: "test/classifier",
+      usage: {
+        input: 1,
+        output: 1,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 2,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+    }));
+    const onAutoDecision = vi.fn();
+    const controller = new ApprovalController(
+      { ...policies, read: "auto", write: "deny", overrides: { "demo.write": "read" } },
+      { hasUI: false } as ExtensionContext,
+      new FabricSessionApprovals(),
+      { classify } as unknown as FabricAutoApprovalClassifier,
+      onAutoDecision,
+    );
+
+    await controller.approve(action);
+
+    expect(onAutoDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "demo.write", risk: "write", approvalRisk: "read" }),
+      expect.objectContaining({ decision: "allow" }),
+    );
   });
 
   it("keeps exact ask grants scoped to their action ref", async () => {
@@ -144,7 +196,7 @@ describe("ApprovalController", () => {
       { hasUI: false } as ExtensionContext,
       session,
     );
-    await expect(deny.approve(action)).rejects.toThrow("denied by the Fabric write policy");
+    await expect(deny.approve(action)).rejects.toThrow("denied by exact approval override");
   });
 
   it("shares an Always allow grant across the Pi session", async () => {

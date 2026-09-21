@@ -937,10 +937,12 @@ return true;
     recorder.issueCall("fabric.approval.auto", {
       action: "pi.bash",
       risk: "execute",
+      approvalRisk: "read",
       rawArguments: "classifier-argument-secret",
     }).succeed({
       action: "pi.bash",
       risk: "execute",
+      approvalRisk: "read",
       decision: "escalate",
       model: "anthropic/classifier",
       reason: "classifier-reason-secret",
@@ -961,7 +963,7 @@ return true;
       { key: "build.status" },
       {},
       {},
-      { action: "pi.bash", risk: "execute" },
+      { action: "pi.bash", risk: "execute", approvalRisk: "read" },
     ]);
     expect(trace.operations.map((operation) => operation.result)).toEqual([
       undefined,
@@ -975,6 +977,7 @@ return true;
       {
         action: "pi.bash",
         risk: "execute",
+        approvalRisk: "read",
         decision: "escalate",
         model: "anthropic/classifier",
         at: 123,
