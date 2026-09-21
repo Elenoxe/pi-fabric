@@ -115,6 +115,34 @@ describe("FabricAutoApprovalClassifier", () => {
       sessionId: "session-1",
     });
   });
+  it("derives the hidden Codex classifier from a registered Responses template", async () => {
+    completeSimple.mockResolvedValue({
+      stopReason: "toolUse",
+      content: [{
+        type: "toolCall",
+        id: "decision",
+        name: "classify_result",
+        arguments: { decision: "allow", reason: "Codex review" },
+      }],
+      usage,
+    });
+    const template = { ...model, provider: "openai-codex", id: "gpt-5.5", api: "openai-codex-responses" };
+    const ctx = context();
+    Object.assign(ctx.modelRegistry, {
+      find: vi.fn((provider: string, id: string) => provider === "openai-codex" && id === "gpt-5.5" ? template : undefined),
+      getAll: vi.fn(() => [template]),
+    });
+
+    const result = await new FabricAutoApprovalClassifier().classify(
+      action,
+      { command: "pnpm test" },
+      ctx,
+      "openai-codex/codex-auto-review",
+    );
+
+    expect(result.model).toBe("openai-codex/codex-auto-review");
+    expect(completeSimple.mock.calls[0]![0]).toMatchObject({ provider: "openai-codex", id: "codex-auto-review" });
+  });
 
   it("dispatches custom APIs through Pi's native provider runtime", async () => {
     const customModel = {

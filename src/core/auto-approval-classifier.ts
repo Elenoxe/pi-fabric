@@ -5,6 +5,7 @@ import { DEFAULT_JEV_CONFIG, type FabricJevConfig } from "../jev/config.js";
 import { isJevApprovalModel } from "../jev/model-key.js";
 import { jevClassifierKey, resolveJevClassifierTarget } from "../jev/routes.js";
 import type { JevQuestion } from "../jev/types.js";
+import { resolveApprovalModel } from "./approval-model.js";
 import type { ResolvedFabricAction } from "./action-registry.js";
 
 const MAX_TRANSCRIPT_CHARS = 24_000;
@@ -274,10 +275,15 @@ const configuredModel = (context: ExtensionContext, modelKey?: string) => {
   if (!modelKey) return context.model;
   const separator = modelKey.indexOf("/");
   if (separator <= 0 || separator === modelKey.length - 1) return undefined;
-  return context.modelRegistry.find(
+  const registry = context.modelRegistry as typeof context.modelRegistry & {
+    getAll?: () => ReturnType<typeof context.modelRegistry.getAll>;
+  };
+  const registered = registry.find(
     modelKey.slice(0, separator),
     modelKey.slice(separator + 1),
   );
+  if (registered) return registered;
+  return resolveApprovalModel(modelKey, registry.getAll?.() ?? []);
 };
 
 export class FabricAutoApprovalClassifier {

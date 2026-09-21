@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-export type ModelLike = { provider: string; id: string; name?: string };
+export type ModelLike = { provider: string; id: string; name?: string; api?: string };
 
 export type ClaudeModelLike = { value: string; displayName?: string; resolvedModel?: string };
 

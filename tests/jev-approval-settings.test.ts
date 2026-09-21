@@ -14,7 +14,7 @@ import { ProbabilityInputSubmenu, SectionSubmenu } from "../src/ui/settings-subm
 
 const theme = { fg: (_: string, text: string) => text, bg: (_: string, text: string) => text, bold: (text: string) => text } as unknown as Theme;
 const thresholdId = "jev.autoApprovalThreshold";
-const fixture = (model?: string) => {
+const fixture = (model?: string, models: Array<{ provider: string; id: string; name?: string; api?: string }> = []) => {
   const config = normalizeFabricConfig({ approvals: { model } });
   const apply = vi.fn((id: string, value: unknown) => {
     if (id === "approvals.model") {
@@ -22,7 +22,7 @@ const fixture = (model?: string) => {
       else delete config.approvals.model;
     } else if (id === thresholdId) config.jev.autoApprovalThreshold = value as number;
   });
-  const items = buildFabricSettingsItems(theme, config, apply, { keepVisibleCandidates: [], modelSource: { models: [], lastUsed: {} } });
+  const items = buildFabricSettingsItems(theme, config, apply, { keepVisibleCandidates: [], modelSource: { models, lastUsed: {} } });
   const open = () => items.find(item => item.id === "approvals")!.submenu!("", () => {}) as SectionSubmenu;
   return { config, apply, open };
 };
@@ -45,6 +45,23 @@ describe("Jev approval probability settings", () => {
       "pi-fabric/vercel-ai-gateway/jev-latest",
     ]);
     expect(picker.rpcChoices().find(choice => choice.current)?.value).toBe("pi-fabric/typesafe/jev-latest");
+  });
+  it("shows Codex auto-review only when an OpenAI Codex Responses template is available", () => {
+    const { open } = fixture(undefined, [{
+      provider: "openai-codex",
+      id: "gpt-5.5",
+      name: "GPT-5.5",
+      api: "openai-codex-responses",
+    }]);
+    const picker = activate<FabricModelSelector>(open(), "approvals.model");
+
+    expect(picker.rpcChoices().map(choice => choice.value)).toContain("openai-codex/codex-auto-review");
+  });
+  it("does not show Codex auto-review without a Codex Responses template", () => {
+    const { open } = fixture(undefined, [{ provider: "anthropic", id: "claude" }]);
+    const picker = activate<FabricModelSelector>(open(), "approvals.model");
+
+    expect(picker.rpcChoices().map(choice => choice.value)).not.toContain("openai-codex/codex-auto-review");
   });
   it.each([undefined, "anthropic/chat", "pi-fabric/typesafe/jev-latest", "pi-fabric/openrouter/jev-latest", "pi-fabric/vercel-ai-gateway/jev-latest", "pi-fabric/typesafe/pinned"])("shows the setting only for a Jev override: %s", model => {
     const { config, open } = fixture(model);

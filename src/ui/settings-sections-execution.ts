@@ -1,5 +1,6 @@
 import type { SettingItem } from "@earendil-works/pi-tui";
 import { isJevApprovalModel } from "../jev/model-key.js";
+import { approvalModelCandidates } from "../core/approval-model.js";
 import { jevClassifierModels } from "../jev/routes.js";
 import type { SettingsSectionContext } from "./settings-section-context.js";
 import {
@@ -288,7 +289,7 @@ export const buildApprovalsSection = (
             {
               ...options.modelSource,
               models: [
-                ...options.modelSource.models.filter(model => !isJevApprovalModel(`${model.provider}/${model.id}`)),
+                ...approvalModelCandidates(options.modelSource.models).filter(model => !isJevApprovalModel(`${model.provider}/${model.id}`)),
                 ...jevClassifierModels(config.jev.model),
               ],
             },
