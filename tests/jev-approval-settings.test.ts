@@ -34,12 +34,14 @@ const activate = <T>(section: SectionSubmenu, id: string): T => {
   section.handleInput("\r");
   return (section.settingsList as unknown as { submenuComponent: T }).submenuComponent;
 };
+const openAutoModel = (section: SectionSubmenu) => activate<SectionSubmenu>(section, "approvals.model");
+const openAutoModelPicker = (section: SectionSubmenu) => activate<FabricModelSelector>(openAutoModel(section), "approvals.model");
 afterEach(() => vi.unstubAllEnvs());
 
 describe("Jev approval probability settings", () => {
   it("offers every route alias without duplicate or legacy picker entries", () => {
     const { open } = fixture("jev/jev-latest");
-    const picker = activate<FabricModelSelector>(open(), "approvals.model");
+    const picker = openAutoModelPicker(open());
     expect(picker.rpcChoices().map(choice => choice.value)).toEqual([
       "Inherit",
       "pi-fabric/typesafe/jev-latest",
@@ -56,26 +58,26 @@ describe("Jev approval probability settings", () => {
       name: "GPT-5.5",
       api: "openai-codex-responses",
     }]);
-    const picker = activate<FabricModelSelector>(open(), "approvals.model");
+    const picker = openAutoModelPicker(open());
 
     expect(picker.rpcChoices().map(choice => choice.value)).toContain("openai-codex/codex-auto-review");
   });
   it("does not show Codex auto-review without a Codex Responses template", () => {
     const { open } = fixture(undefined, [{ provider: "anthropic", id: "claude" }]);
-    const picker = activate<FabricModelSelector>(open(), "approvals.model");
+    const picker = openAutoModelPicker(open());
 
     expect(picker.rpcChoices().map(choice => choice.value)).not.toContain("openai-codex/codex-auto-review");
   });
   it.each([undefined, "anthropic/chat", "pi-fabric/typesafe/jev-latest", "pi-fabric/openrouter/jev-latest", "pi-fabric/vercel-ai-gateway/jev-latest", "pi-fabric/typesafe/pinned"])("shows the setting only for a Jev override: %s", model => {
     const { config, open } = fixture(model);
     expect(config.jev.autoApprovalThreshold).toBe(0.5);
-    const row = open().items.find(item => item.id === thresholdId);
+    const row = openAutoModel(open()).items.find(item => item.id === thresholdId);
     expect(Boolean(row)).toBe(Boolean(model && isJevApprovalModel(model)));
     if (row) expect(row.currentValue).toBe("0.5");
   });
   it.each([undefined, "anthropic/chat", "pi-fabric/typesafe/jev-latest", "pi-fabric/openrouter/jev-latest", "pi-fabric/vercel-ai-gateway/jev-latest"])("shows reasoning only for ordinary Pi classifiers: %s", model => {
     const { config, open } = fixture(model);
-    const row = open().items.find(item => item.id === thinkingId);
+    const row = openAutoModel(open()).items.find(item => item.id === thinkingId);
     expect(Boolean(row)).toBe(!isJevApprovalModel(config.approvals.model));
     if (row) expect(row.currentValue).toBe("Minimal");
   });
@@ -87,36 +89,38 @@ describe("Jev approval probability settings", () => {
   it("refreshes immediately on model selection and retains exact values when hidden or reopened", () => {
     const { config, apply, open } = fixture();
     const section = open();
-    const rows = section.items;
-    activate<FabricModelSelector>(section, "approvals.model").selectRpc("pi-fabric/typesafe/jev-latest");
-    expect(section.items).toBe(rows);
-    expect(rows.some(item => item.id === thresholdId)).toBe(true);
-    activate<ProbabilityInputSubmenu>(section, thresholdId).submitRpc("0.975");
+    const autoModel = openAutoModel(section);
+    const autoRows = autoModel.items;
+    activate<FabricModelSelector>(autoModel, "approvals.model").selectRpc("pi-fabric/typesafe/jev-latest");
+    expect(autoModel.items).toBe(autoRows);
+    expect(autoRows.some(item => item.id === thresholdId)).toBe(true);
+    activate<ProbabilityInputSubmenu>(autoModel, thresholdId).submitRpc("0.975");
     expect(apply).toHaveBeenLastCalledWith(thresholdId, 0.975);
     expect(config.jev.autoApprovalThreshold).toBe(0.975);
-    expect(section.render(100).join("\n")).toContain("0.975");
-    activate<FabricModelSelector>(section, "approvals.model").selectRpc("Inherit");
-    expect(rows.some(item => item.id === thresholdId)).toBe(false);
+    expect(autoModel.render(100).join("\n")).toContain("0.975");
+    activate<FabricModelSelector>(autoModel, "approvals.model").selectRpc("Inherit");
+    expect(autoRows.some(item => item.id === thresholdId)).toBe(false);
     expect(config.jev.autoApprovalThreshold).toBe(0.975);
-    activate<FabricModelSelector>(section, "approvals.model").selectRpc("pi-fabric/typesafe/jev-latest");
-    expect(open().items.find(item => item.id === thresholdId)?.currentValue).toBe("0.975");
+    activate<FabricModelSelector>(autoModel, "approvals.model").selectRpc("pi-fabric/typesafe/jev-latest");
+    expect(openAutoModel(section).items.find(item => item.id === thresholdId)?.currentValue).toBe("0.975");
   });
 
   it("refreshes with older host widgets that lack cursor restoration", () => {
     const { open } = fixture();
     const section = open();
+    const autoModel = openAutoModel(section);
     const original = vi.spyOn(SettingsList.prototype, "selectItem");
     Object.defineProperty(SettingsList.prototype, "selectItem", { value: undefined });
     try {
-      section.applyChange("approvals.model", "pi-fabric/typesafe/jev-latest");
-      expect(section.items.some(item => item.id === thresholdId)).toBe(true);
-      expect(section.render(100).join("\n")).toContain("Jev minimum probability");
+      autoModel.applyChange("approvals.model", "pi-fabric/typesafe/jev-latest");
+      expect(autoModel.items.some(item => item.id === thresholdId)).toBe(true);
+      expect(autoModel.render(100).join("\n")).toContain("Jev minimum probability");
     } finally { original.mockRestore(); }
   });
 
   it.each(["", " ", "NaN", "Infinity", "-0.01", "1.001", "text", "50%"])("rejects invalid input %j and cancels without saving", value => {
     const { config, apply, open } = fixture("pi-fabric/typesafe/jev-latest");
-    const input = activate<ProbabilityInputSubmenu>(open(), thresholdId);
+    const input = activate<ProbabilityInputSubmenu>(openAutoModel(open()), thresholdId);
     input.input.setValue(value);
     input.handleInput("\r");
     expect(input.render(90).join("\n")).toContain("Enter a probability between 0 and 1.");
@@ -127,7 +131,7 @@ describe("Jev approval probability settings", () => {
 
   it.each(["0", "0.50", ".955", "1"])("accepts probability %s through the terminal input", value => {
     const { config, open } = fixture("pi-fabric/typesafe/jev-latest");
-    const input = activate<ProbabilityInputSubmenu>(open(), thresholdId);
+    const input = activate<ProbabilityInputSubmenu>(openAutoModel(open()), thresholdId);
     input.input.setValue(value);
     input.handleInput("\r");
     expect(config.jev.autoApprovalThreshold).toBe(Number(value));
@@ -148,18 +152,27 @@ describe("Jev approval probability settings", () => {
       } as unknown as FabricState;
       let switched = false;
       let opened = false;
-      let edits = 0;
+      let completed = false;
       const notify = vi.fn();
       const select = vi.fn(async (title: string, options: string[]) => {
-        if (title.startsWith("Fabric settings › Approvals › Auto model")) return options.find(option => option.startsWith("typesafe/jev-latest"));
-        if (title.startsWith("Fabric settings › Approvals")) {
-          if (edits++ === 0) {
-            expect(options.some(option => option.startsWith("Jev minimum probability"))).toBe(false);
-            return options.find(option => option.startsWith("Auto model"));
+        if (title.startsWith("Fabric settings › Approvals › Auto model › Model")) {
+          return options.find(option => option.startsWith("typesafe/jev-latest"));
+        }
+        if (title.startsWith("Fabric settings › Approvals › Auto model")) {
+          if (options.some(option => option.startsWith("Jev minimum probability · 0.5"))) {
+            return options.find(option => option.startsWith("Jev minimum probability · 0.5"));
           }
-          if (edits === 2) return options.find(option => option.startsWith("Jev minimum probability · 0.5"));
-          expect(options.some(option => option.startsWith("Jev minimum probability · 0.975"))).toBe(true);
-          return "← Back";
+          if (options.some(option => option.startsWith("Jev minimum probability · 0.975"))) {
+            expect(options.some(option => option.startsWith("Jev minimum probability · 0.975"))).toBe(true);
+            completed = true;
+            return "← Back";
+          }
+          return options.find(option => option.startsWith("Model"));
+        }
+        if (title.startsWith("Fabric settings › Approvals")) {
+          if (completed) return "← Back";
+          expect(options.some(option => option.startsWith("Jev minimum probability"))).toBe(false);
+          return options.find(option => option.startsWith("Auto model"));
         }
         if (scope === "global" && !switched) {
           switched = true;

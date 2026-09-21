@@ -243,6 +243,71 @@ export const buildSchemaSection = (
 export const buildApprovalsSection = (
   { config, theme, options, persist }: Pick<SettingsSectionContext<"modelSource">, "config" | "theme" | "options" | "persist">,
 ): SettingItem => {
+  const selectedApprovalModel = config.approvals.model || INHERIT_VALUE;
+  const showApprovalThinking = !isJevApprovalModel(config.approvals.model);
+  const approvalModelDescription =
+    "Pi or Jev model used as the auto-mode safety classifier. Inherit uses the active session model. Choose the model's reasoning effort inside this setting. Jev requires /login jev (TypeSafe), the existing openrouter credential (OpenRouter), or the existing vercel-ai-gateway credential (Vercel AI Gateway).";
+  const approvalModelItems = () => {
+    const selectedModel = config.approvals.model || INHERIT_VALUE;
+    const showThinking = !isJevApprovalModel(config.approvals.model);
+    const modelPicker = modelPickerSubmenu(
+      theme,
+      {
+        ...options.modelSource,
+        models: [
+          ...approvalModelCandidates(options.modelSource.models).filter(model => !isJevApprovalModel(`${model.provider}/${model.id}`)),
+          ...jevClassifierModels(config.jev.model),
+        ],
+      },
+      {
+        headerText: "Safety classifier for auto approval policies. Inherit uses the active Pi model.",
+        inheritName: "Use the active Pi session model",
+      },
+    );
+    return [
+      setting(
+        "approvals.model",
+        "Model",
+        showThinking ? `${selectedModel} · ${thinkingLabel(config.approvals.thinking)}` : selectedModel,
+        {
+          description:
+            "Safety classifier model. Inherit uses the active Pi session model. Jev uses typed judgments, not chat.",
+          submenu: (_currentValue, done) => modelPicker(selectedModel, done),
+        },
+      ),
+      ...(showThinking ? [
+        setting("approvals.thinking", "Thinking", thinkingLabel(config.approvals.thinking), {
+          description: "Reasoning effort for the selected ordinary Pi auto-mode classifier. Off omits reasoning; non-reasoning models ignore this setting.",
+          submenu: thinkingSubmenu(theme, {
+            title: "Auto approval thinking",
+            description: "Reasoning effort forwarded to reasoning-capable Pi classifiers. Off omits reasoning.",
+          }),
+        }),
+      ] : []),
+      ...(isJevApprovalModel(config.approvals.model) ? [
+        setting("jev.autoApprovalThreshold", "Jev minimum probability", String(config.jev.autoApprovalThreshold), {
+          description: "Minimum safety probability for automatic approval (0–1, default 0.50). Lower values allow more actions; secrets and destructive verdicts still escalate. Errors still require approval.",
+          submenu: probabilitySubmenu(theme, "Jev minimum probability",
+            "Enter a probability from 0 to 1 (default 0.50). Higher values are more conservative. 0 allows every judgment whose secrets and destructive verdicts are clean; 1 requires a probability of 1. Errors and missing user text still require approval."),
+        }),
+      ] : []),
+    ];
+  };
+  const approvalModel = setting(
+    "approvals.model",
+    "Auto model",
+    showApprovalThinking ? `${selectedApprovalModel} · ${thinkingLabel(config.approvals.thinking)}` : selectedApprovalModel,
+    {
+      description: approvalModelDescription,
+      submenu: sectionSubmenu(
+        theme,
+        "Auto model",
+        "Choose the classifier model, then choose its thinking level.",
+        approvalModelItems,
+        persist,
+      ),
+    },
+  );
   return setting("approvals", "Approvals", summaryFor("approvals", config), {
     description: "Per-action approval policy for Fabric and model-requested native tool calls.",
     submenu: sectionSubmenu(
@@ -250,41 +315,7 @@ export const buildApprovalsSection = (
       "Approvals",
       "Approval policy for Fabric and model-requested native tool calls. Auto routes each call through a dedicated safety classifier and escalates uncertain actions to you.",
       () => [
-        setting("approvals.model", "Auto model", config.approvals.model || INHERIT_VALUE, {
-          description:
-            "Pi or Jev model used as the auto-mode safety classifier. Inherit uses the active session model. Jev requires /login jev (TypeSafe), the existing openrouter credential (OpenRouter), or the existing vercel-ai-gateway credential (Vercel AI Gateway) and the configured minimum safety probability (default 0.50); lower scores and errors require explicit approval. No executable classifier tools.",
-          submenu: modelPickerSubmenu(
-            theme,
-            {
-              ...options.modelSource,
-              models: [
-                ...approvalModelCandidates(options.modelSource.models).filter(model => !isJevApprovalModel(`${model.provider}/${model.id}`)),
-                ...jevClassifierModels(config.jev.model),
-              ],
-            },
-            {
-              headerText:
-                "Safety classifier for auto approval policies. Inherit uses the active Pi model. Jev uses typed judgments, not chat; authenticate with /login jev for TypeSafe, /login openrouter for OpenRouter, or /login vercel-ai-gateway for Vercel AI Gateway.",
-              inheritName: "Use the active Pi session model",
-            },
-          ),
-        }),
-        ...(!isJevApprovalModel(config.approvals.model) ? [
-          setting("approvals.thinking", "Thinking", thinkingLabel(config.approvals.thinking), {
-            description: "Reasoning effort for ordinary Pi auto-mode classifiers. Off omits reasoning; non-reasoning models ignore this setting.",
-            submenu: thinkingSubmenu(theme, {
-              title: "Auto approval thinking",
-              description: "Reasoning effort forwarded to reasoning-capable Pi classifiers. Off omits reasoning.",
-            }),
-          }),
-        ] : []),
-        ...(isJevApprovalModel(config.approvals.model) ? [
-          setting("jev.autoApprovalThreshold", "Jev minimum probability", String(config.jev.autoApprovalThreshold), {
-            description: "Minimum safety probability for automatic approval (0–1, default 0.50). Lower values allow more actions; secrets and destructive verdicts still escalate. Errors still require approval.",
-            submenu: probabilitySubmenu(theme, "Jev minimum probability",
-              "Enter a probability from 0 to 1 (default 0.50). Higher values are more conservative. 0 allows every judgment whose secrets and destructive verdicts are clean; 1 requires a probability of 1. Errors and missing user text still require approval."),
-          }),
-        ] : []),
+        approvalModel,
         setting("approvals.read", "Read", config.approvals.read, {
           description: "Approval policy for read operations. Read is normally safe to leave allowed.",
           values: APPROVAL_MODES,

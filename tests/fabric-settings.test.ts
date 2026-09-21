@@ -587,13 +587,17 @@ describe("FabricSettingsComponent", () => {
     expect(write.values).toContain("auto");
     expect(section.render(100).join("\n")).toContain("Auto model ›");
     expect(section.render(100).join("\n")).toContain("Inherit");
-
-    list.selectedIndex = list.items.findIndex(
+    expect(list.items.find((item: { id: string }) => item.id === "approvals.model").currentValue).toBe("Inherit · Minimal");
+    list.activateItem();
+    const autoModel = list.submenuComponent as any;
+    expect(autoModel.items.find((item: { id: string }) => item.id === "approvals.model").currentValue).toBe("Inherit · Minimal");
+    const autoList = autoModel.settingsList as any;
+    autoList.selectedIndex = autoList.items.findIndex(
       (item: { id: string }) => item.id === "approvals.model",
     );
-    list.activateItem();
-    list.submenuComponent.handleInput("\x1b[B");
-    list.submenuComponent.handleInput("\r");
+    autoList.activateItem();
+    autoList.submenuComponent.handleInput("\x1b[B");
+    autoList.submenuComponent.handleInput("\r");
 
     expect(applied.at(-1)).toEqual({
       id: "approvals.model",
@@ -610,17 +614,20 @@ describe("FabricSettingsComponent", () => {
     });
     const section = items.find(item => item.id === "approvals")!.submenu!("", () => {}) as any;
     const list = section.settingsList as any;
-    list.selectedIndex = list.items.findIndex((item: { id: string }) => item.id === "approvals.model");
     list.activateItem();
-    const picker = list.submenuComponent;
+    const autoModel = list.submenuComponent as any;
+    const autoList = autoModel.settingsList as any;
+    autoList.selectedIndex = autoList.items.findIndex((item: { id: string }) => item.id === "approvals.model");
+    autoList.activateItem();
+    const picker = autoList.submenuComponent;
     expect(picker.rpcChoices()).toContainEqual(expect.objectContaining({ value: "pi-fabric/typesafe/jev-1.13" }));
     expect(picker.rpcChoices()).toContainEqual(expect.objectContaining({ value: "pi-fabric/typesafe/jev-latest" }));
     expect(picker.rpcChoices().some((choice: { value: string }) => choice.value.startsWith("jev/"))).toBe(false);
     expect(picker.selectRpc("pi-fabric/typesafe/jev-1.13")).toBe(true);
     expect(applied.at(-1)).toEqual({ id: "approvals.model", value: "pi-fabric/typesafe/jev-1.13" });
-    list.activateItem();
-    list.submenuComponent.handleInput("jev");
-    list.submenuComponent.handleInput("\r");
+    autoList.activateItem();
+    autoList.submenuComponent.handleInput("jev");
+    autoList.submenuComponent.handleInput("\r");
     expect(applied.at(-1)).toEqual({ id: "approvals.model", value: "pi-fabric/openrouter/jev-1.13" });
     expect(source.models.some(model => model.provider === "jev")).toBe(false);
   });
