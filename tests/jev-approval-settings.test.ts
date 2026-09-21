@@ -34,8 +34,8 @@ const activate = <T>(section: SectionSubmenu, id: string): T => {
   section.handleInput("\r");
   return (section.settingsList as unknown as { submenuComponent: T }).submenuComponent;
 };
-const openAutoModel = (section: SectionSubmenu) => activate<SectionSubmenu>(section, "approvals.model");
-const openAutoModelPicker = (section: SectionSubmenu) => activate<FabricModelSelector>(openAutoModel(section), "approvals.model");
+const openAutoModel = (section: SectionSubmenu) => section;
+const openAutoModelPicker = (section: SectionSubmenu) => activate<FabricModelSelector>(section, "approvals.model");
 afterEach(() => vi.unstubAllEnvs());
 
 describe("Jev approval probability settings", () => {
@@ -62,18 +62,21 @@ describe("Jev approval probability settings", () => {
 
     expect(picker.rpcChoices().map(choice => choice.value)).toContain("openai-codex/codex-auto-review");
   });
-  it("filters Codex approval thinking levels and shows the clamped effective value", () => {
-    const { config, open } = fixture("openai-codex/codex-auto-review", [{
+  it("opens the model picker directly and navigates to filtered thinking levels", () => {
+    const { config, open } = fixture(undefined, [{
       provider: "openai-codex",
       id: "gpt-5.5",
       name: "GPT-5.5",
       api: "openai-codex-responses",
     }]);
-    const row = openAutoModel(open()).items.find(item => item.id === thinkingId)!;
-    const picker = row.submenu!(row.currentValue, () => {}) as SelectSubmenu;
+    const section = open();
+    const modelPicker = openAutoModelPicker(section);
 
-    expect(picker.options.map(option => option.value)).toEqual(["low", "medium", "high", "xhigh", "max"]);
-    expect(row.currentValue).toBe("Low");
+    expect(modelPicker.selectRpc("openai-codex/codex-auto-review")).toBe(true);
+    expect(config.approvals.model).toBe("openai-codex/codex-auto-review");
+    const thinkingPicker = (section.settingsList as unknown as { submenuComponent: SelectSubmenu }).submenuComponent;
+    expect(thinkingPicker.options.map(option => option.value)).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(section.items.find(item => item.id === thinkingId)?.currentValue).toBe("Low");
     expect(config.approvals.thinking).toBe("minimal");
   });
   it("does not show Codex auto-review without a Codex Responses template", () => {
@@ -108,14 +111,16 @@ describe("Jev approval probability settings", () => {
     activate<FabricModelSelector>(autoModel, "approvals.model").selectRpc("pi-fabric/typesafe/jev-latest");
     expect(autoModel.items).toBe(autoRows);
     expect(autoRows.some(item => item.id === thresholdId)).toBe(true);
-    activate<ProbabilityInputSubmenu>(autoModel, thresholdId).submitRpc("0.975");
+    const thresholdInput = (autoModel.settingsList as unknown as { submenuComponent?: ProbabilityInputSubmenu }).submenuComponent
+      ?? activate<ProbabilityInputSubmenu>(autoModel, thresholdId);
+    thresholdInput.submitRpc("0.975");
     expect(apply).toHaveBeenLastCalledWith(thresholdId, 0.975);
     expect(config.jev.autoApprovalThreshold).toBe(0.975);
     expect(autoModel.render(100).join("\n")).toContain("0.975");
-    activate<FabricModelSelector>(autoModel, "approvals.model").selectRpc("Inherit");
+    autoModel.applyChange("approvals.model", "Inherit");
     expect(autoRows.some(item => item.id === thresholdId)).toBe(false);
     expect(config.jev.autoApprovalThreshold).toBe(0.975);
-    activate<FabricModelSelector>(autoModel, "approvals.model").selectRpc("pi-fabric/typesafe/jev-latest");
+    openAutoModelPicker(autoModel).selectRpc("pi-fabric/typesafe/jev-latest");
     expect(openAutoModel(section).items.find(item => item.id === thresholdId)?.currentValue).toBe("0.975");
   });
 
@@ -169,10 +174,18 @@ describe("Jev approval probability settings", () => {
       let completed = false;
       const notify = vi.fn();
       const select = vi.fn(async (title: string, options: string[]) => {
-        if (title.startsWith("Fabric settings › Approvals › Auto model › Model")) {
-          return options.find(option => option.startsWith("typesafe/jev-latest"));
+        if (scope === "global" && !switched) {
+          switched = true;
+          return options.find(option => option.startsWith("Switch save scope"));
+        }
+        if (!opened) {
+          opened = true;
+          return options.find(option => option.startsWith("Approvals"));
         }
         if (title.startsWith("Fabric settings › Approvals › Auto model")) {
+          return options.find(option => option.startsWith("typesafe/jev-latest"));
+        }
+        if (title.startsWith("Fabric settings › Approvals")) {
           if (options.some(option => option.startsWith("Jev minimum probability · 0.5"))) {
             return options.find(option => option.startsWith("Jev minimum probability · 0.5"));
           }
@@ -181,20 +194,8 @@ describe("Jev approval probability settings", () => {
             completed = true;
             return "← Back";
           }
-          return options.find(option => option.startsWith("Model"));
-        }
-        if (title.startsWith("Fabric settings › Approvals")) {
-          if (completed) return "← Back";
           expect(options.some(option => option.startsWith("Jev minimum probability"))).toBe(false);
           return options.find(option => option.startsWith("Auto model"));
-        }
-        if (scope === "global" && !switched) {
-          switched = true;
-          return options.find(option => option.startsWith("Switch save scope"));
-        }
-        if (!opened) {
-          opened = true;
-          return options.find(option => option.startsWith("Approvals"));
         }
         return "Done";
       });

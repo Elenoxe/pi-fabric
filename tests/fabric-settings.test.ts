@@ -589,15 +589,10 @@ describe("FabricSettingsComponent", () => {
     expect(section.render(100).join("\n")).toContain("Inherit");
     expect(list.items.find((item: { id: string }) => item.id === "approvals.model").currentValue).toBe("Inherit · Minimal");
     list.activateItem();
-    const autoModel = list.submenuComponent as any;
-    expect(autoModel.items.find((item: { id: string }) => item.id === "approvals.model").currentValue).toBe("Inherit · Minimal");
-    const autoList = autoModel.settingsList as any;
-    autoList.selectedIndex = autoList.items.findIndex(
-      (item: { id: string }) => item.id === "approvals.model",
-    );
-    autoList.activateItem();
-    autoList.submenuComponent.handleInput("\x1b[B");
-    autoList.submenuComponent.handleInput("\r");
+    expect(list.items.find((item: { id: string }) => item.id === "approvals.model").currentValue).toBe("Inherit · Minimal");
+    const picker = list.submenuComponent;
+    picker.handleInput("\x1b[B");
+    picker.handleInput("\r");
 
     expect(applied.at(-1)).toEqual({
       id: "approvals.model",
@@ -616,18 +611,13 @@ describe("FabricSettingsComponent", () => {
     const list = section.settingsList as any;
     list.activateItem();
     const autoModel = list.submenuComponent as any;
-    const autoList = autoModel.settingsList as any;
-    autoList.selectedIndex = autoList.items.findIndex((item: { id: string }) => item.id === "approvals.model");
-    autoList.activateItem();
-    const picker = autoList.submenuComponent;
+    const picker = list.submenuComponent;
     expect(picker.rpcChoices()).toContainEqual(expect.objectContaining({ value: "pi-fabric/typesafe/jev-1.13" }));
     expect(picker.rpcChoices()).toContainEqual(expect.objectContaining({ value: "pi-fabric/typesafe/jev-latest" }));
     expect(picker.rpcChoices().some((choice: { value: string }) => choice.value.startsWith("jev/"))).toBe(false);
     expect(picker.selectRpc("pi-fabric/typesafe/jev-1.13")).toBe(true);
     expect(applied.at(-1)).toEqual({ id: "approvals.model", value: "pi-fabric/typesafe/jev-1.13" });
-    autoList.activateItem();
-    autoList.submenuComponent.handleInput("jev");
-    autoList.submenuComponent.handleInput("\r");
+    expect(picker.selectRpc("pi-fabric/openrouter/jev-1.13")).toBe(true);
     expect(applied.at(-1)).toEqual({ id: "approvals.model", value: "pi-fabric/openrouter/jev-1.13" });
     expect(source.models.some(model => model.provider === "jev")).toBe(false);
   });

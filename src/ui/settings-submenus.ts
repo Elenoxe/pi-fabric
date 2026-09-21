@@ -46,7 +46,7 @@ const SUBMENU_LAYOUT: SelectListLayoutOptions = {
   maxPrimaryColumnWidth: 32,
 };
 
-type SettingsSubmenu = (currentValue: string, done: (selectedValue?: string) => void) => Component;
+type SettingsSubmenu = (currentValue: string, done: (selectedValue?: string, options?: { navigateTo?: string }) => void) => Component;
 
 export const settingsListTheme = (theme: Theme): SettingsListTheme => ({
   label: (text, selected) => (selected ? theme.fg("accent", text) : text),
@@ -555,6 +555,11 @@ export class SectionSubmenu extends Container {
       if (!refreshItems) return;
       // Preserve the array identity used by the RPC browser as well as the TUI.
       this.items.splice(0, this.items.length, ...refreshItems());
+      const activeList = this.settingsList as unknown as { submenuComponent?: unknown; selectItem?: (id: string) => void };
+      if (activeList.submenuComponent && activeList.selectItem) {
+        activeList.selectItem(id);
+        return;
+      }
       this.removeChild(this.settingsList);
       this.settingsList = createList();
       this.settingsList.selectItem?.(id);

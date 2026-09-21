@@ -258,12 +258,6 @@ export const buildApprovalsSection = (
       effective: clampThinkingLevel(piModel, config.approvals.thinking),
     };
   };
-  const selectedApprovalModel = config.approvals.model || INHERIT_VALUE;
-  const showApprovalThinking = !isJevApprovalModel(config.approvals.model);
-  const effectiveApprovalThinking = thinkingCapabilities(resolveSettingsModel(config.approvals.model))?.effective
-    ?? config.approvals.thinking;
-  const approvalModelDescription =
-    "Pi or Jev model used as the auto-mode safety classifier. Inherit uses the active session model. Choose the model's reasoning effort inside this setting. Jev requires /login jev (TypeSafe), the existing openrouter credential (OpenRouter), or the existing vercel-ai-gateway credential (Vercel AI Gateway).";
   const approvalModelItems = () => {
     const selectedModel = config.approvals.model || INHERIT_VALUE;
     const showThinking = !isJevApprovalModel(config.approvals.model);
@@ -283,17 +277,20 @@ export const buildApprovalsSection = (
         inheritName: "Use the active Pi session model",
       },
     );
+    const approvalModel = setting(
+      "approvals.model",
+      "Auto model",
+      showThinking ? `${selectedModel} · ${thinkingLabel(currentThinking)}` : selectedModel,
+      {
+        description: "Safety classifier model. Inherit uses the active Pi session model. Jev uses typed judgments, not chat.",
+        submenu: (currentValue, done) => modelPicker(currentValue, (value) => {
+          if (value === undefined) return done();
+          done(value, { navigateTo: isJevApprovalModel(value) ? "jev.autoApprovalThreshold" : "approvals.thinking" });
+        }),
+      },
+    );
     return [
-      setting(
-        "approvals.model",
-        "Model",
-        showThinking ? `${selectedModel} · ${thinkingLabel(currentThinking)}` : selectedModel,
-        {
-          description:
-            "Safety classifier model. Inherit uses the active Pi session model. Jev uses typed judgments, not chat.",
-          submenu: (_currentValue, done) => modelPicker(selectedModel, done),
-        },
-      ),
+      approvalModel,
       ...(showThinking ? [
         setting("approvals.thinking", "Thinking", thinkingLabel(currentThinking), {
           description: "Reasoning effort supported by the selected Pi classifier model. Saved unsupported levels use Pi's effective clamped value.",
@@ -313,21 +310,6 @@ export const buildApprovalsSection = (
       ] : []),
     ];
   };
-  const approvalModel = setting(
-    "approvals.model",
-    "Auto model",
-    showApprovalThinking ? `${selectedApprovalModel} · ${thinkingLabel(effectiveApprovalThinking)}` : selectedApprovalModel,
-    {
-      description: approvalModelDescription,
-      submenu: sectionSubmenu(
-        theme,
-        "Auto model",
-        "Choose the classifier model, then choose its thinking level.",
-        approvalModelItems,
-        persist,
-      ),
-    },
-  );
   return setting("approvals", "Approvals", summaryFor("approvals", config), {
     description: "Per-action approval policy for Fabric and model-requested native tool calls.",
     submenu: sectionSubmenu(
@@ -335,7 +317,7 @@ export const buildApprovalsSection = (
       "Approvals",
       "Approval policy for Fabric and model-requested native tool calls. Auto routes each call through a dedicated safety classifier and escalates uncertain actions to you.",
       () => [
-        approvalModel,
+        ...approvalModelItems(),
         setting("approvals.read", "Read", config.approvals.read, {
           description: "Approval policy for read operations. Read is normally safe to leave allowed.",
           values: APPROVAL_MODES,
