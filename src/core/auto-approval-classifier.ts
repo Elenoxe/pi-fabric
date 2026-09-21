@@ -239,6 +239,12 @@ const loadCompleteSimple = (): Promise<CompleteSimpleFn> => {
     .then((module) => module.completeSimple);
   return completeSimpleLoader;
 };
+type ClampThinkingLevel = typeof import("@earendil-works/pi-ai").clampThinkingLevel;
+let clampThinkingLevelLoader: Promise<ClampThinkingLevel> | undefined;
+const loadClampThinkingLevel = (): Promise<ClampThinkingLevel> => {
+  clampThinkingLevelLoader ??= import("@earendil-works/pi-ai").then((module) => module.clampThinkingLevel);
+  return clampThinkingLevelLoader;
+};
 
 interface NativeClassifierProvider {
   streamSimple(
@@ -377,6 +383,7 @@ export class FabricAutoApprovalClassifier {
     }
     const auth = await context.modelRegistry.getApiKeyAndHeaders(model);
     if (!auth.ok) throw new Error(auth.error);
+    const effectiveReasoning = model.reasoning ? await (await loadClampThinkingLevel())(model, thinking) : undefined;
     const response = await completeWithPiProvider(
       context,
       model,
@@ -403,7 +410,7 @@ export class FabricAutoApprovalClassifier {
         ...(auth.headers ? { headers: auth.headers } : {}),
         ...(auth.env ? { env: auth.env } : {}),
         ...(context.signal ? { signal: context.signal } : {}),
-        ...(model.reasoning && thinking !== "off" ? { reasoning: thinking } : {}),
+        ...(effectiveReasoning !== undefined ? { reasoning: effectiveReasoning as unknown as NonNullable<NonNullable<CompleteSimpleArgs[2]>["reasoning"]> } : {}),
         maxTokens: 512,
         maxRetries: 0,
         timeoutMs: CLASSIFIER_TIMEOUT_MS,

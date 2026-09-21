@@ -10,7 +10,7 @@ import { isJevApprovalModel } from "../src/jev/model-key.js";
 import type { FabricState } from "../src/fabric-state.js";
 import { FabricModelSelector } from "../src/ui/fabric-model-selector.js";
 import { buildFabricSettingsItems, openFabricSettings } from "../src/ui/settings.js";
-import { ProbabilityInputSubmenu, SectionSubmenu } from "../src/ui/settings-submenus.js";
+import { ProbabilityInputSubmenu, SectionSubmenu, SelectSubmenu } from "../src/ui/settings-submenus.js";
 import { coerceValue } from "../src/ui/settings-values.js";
 
 const theme = { fg: (_: string, text: string) => text, bg: (_: string, text: string) => text, bold: (text: string) => text } as unknown as Theme;
@@ -61,6 +61,20 @@ describe("Jev approval probability settings", () => {
     const picker = openAutoModelPicker(open());
 
     expect(picker.rpcChoices().map(choice => choice.value)).toContain("openai-codex/codex-auto-review");
+  });
+  it("filters Codex approval thinking levels and shows the clamped effective value", () => {
+    const { config, open } = fixture("openai-codex/codex-auto-review", [{
+      provider: "openai-codex",
+      id: "gpt-5.5",
+      name: "GPT-5.5",
+      api: "openai-codex-responses",
+    }]);
+    const row = openAutoModel(open()).items.find(item => item.id === thinkingId)!;
+    const picker = row.submenu!(row.currentValue, () => {}) as SelectSubmenu;
+
+    expect(picker.options.map(option => option.value)).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(row.currentValue).toBe("Low");
+    expect(config.approvals.thinking).toBe("minimal");
   });
   it("does not show Codex auto-review without a Codex Responses template", () => {
     const { open } = fixture(undefined, [{ provider: "anthropic", id: "claude" }]);

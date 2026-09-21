@@ -1,7 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import type { Api, Model } from "@earendil-works/pi-ai";
 
-export type ModelLike = { provider: string; id: string; name?: string; api?: string };
+/** The model metadata needed by Fabric pickers, with Pi capability types preserved. */
+type ModelCapabilities = Partial<Pick<Model<Api>, "reasoning" | "thinkingLevelMap">>;
+
+export type ModelLike = { provider: string; id: string; name?: string; api?: string } & ModelCapabilities;
 
 export type ClaudeModelLike = { value: string; displayName?: string; resolvedModel?: string };
 

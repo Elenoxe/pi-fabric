@@ -139,34 +139,14 @@ describe("FabricAutoApprovalClassifier", () => {
       { command: "pnpm test" },
       ctx,
       "openai-codex/codex-auto-review",
+      "minimal",
     );
 
     expect(result.model).toBe("openai-codex/codex-auto-review");
     expect(completeSimple.mock.calls[0]![0]).toMatchObject({ provider: "openai-codex", id: "codex-auto-review" });
+    expect(completeSimple.mock.calls[0]![2]).toMatchObject({ reasoning: "low" });
   });
 
-  it("omits reasoning when approval thinking is off", async () => {
-    completeSimple.mockResolvedValue({
-      stopReason: "toolUse",
-      content: [{
-        type: "toolCall",
-        id: "decision",
-        name: "classify_result",
-        arguments: { decision: "allow", reason: "Routine local test command" },
-      }],
-      usage,
-    });
-
-    await new FabricAutoApprovalClassifier().classify(
-      action,
-      { command: "pnpm test" },
-      context(),
-      "anthropic/classifier",
-      "off",
-    );
-
-    expect(completeSimple.mock.calls[0]![2]).not.toHaveProperty("reasoning");
-  });
 
   it("dispatches custom APIs through native provider runtime", async () => {
     const customModel = {

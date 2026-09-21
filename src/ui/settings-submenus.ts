@@ -31,6 +31,7 @@ import {
   clampCompactionTokenThreshold,
 } from "../config.js";
 import {
+  type FabricThinking,
   THINKING_LEVELS,
   thinkingLabel,
 } from "../thinking.js";
@@ -470,13 +471,15 @@ export const thinkingSubmenu = (
   overrides: {
     title?: string;
     description?: string;
+    levels?: readonly FabricThinking[];
     // Label of an extra first option that clears the override (persists "").
     inheritLabel?: string;
   } = {},
 ): SettingsSubmenu => (currentValue, done) => {
+  const levels = overrides.levels ?? THINKING_LEVELS;
   const canonicalCurrent =
-    THINKING_LEVELS.find((level) => thinkingLabel(level) === currentValue) ?? currentValue;
-  const options: SelectItem[] = THINKING_LEVELS.map((level) => ({
+    levels.find((level) => thinkingLabel(level) === currentValue) ?? currentValue;
+  const options: SelectItem[] = levels.map((level) => ({
     value: level,
     label: thinkingLabel(level),
   }));

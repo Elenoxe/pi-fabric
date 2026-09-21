@@ -1,6 +1,7 @@
+import { getSupportedThinkingLevels, clampThinkingLevel } from "@earendil-works/pi-ai";
 import type { SettingItem } from "@earendil-works/pi-tui";
 import { isJevApprovalModel } from "../jev/model-key.js";
-import { approvalModelCandidates } from "../core/approval-model.js";
+import { approvalModelCandidates, resolveApprovalModel } from "../core/approval-model.js";
 import { jevClassifierModels } from "../jev/routes.js";
 import type { SettingsSectionContext } from "./settings-section-context.js";
 import {
@@ -29,7 +30,7 @@ import {
 } from "./settings-values.js";
 import { maxExecutorMemoryLimitBytes } from "../config.js";
 import { thinkingLabel } from "../thinking.js";
-import { INHERIT_VALUE } from "./model-picker.js";
+import { INHERIT_VALUE, type ModelLike } from "./model-picker.js";
 
 export const buildFullCodeModeSection = (
   { config }: Pick<SettingsSectionContext, "config">,
@@ -241,15 +242,33 @@ export const buildSchemaSection = (
 };
 
 export const buildApprovalsSection = (
-  { config, theme, options, persist }: Pick<SettingsSectionContext<"modelSource">, "config" | "theme" | "options" | "persist">,
+  { config, theme, options, persist }: Pick<SettingsSectionContext<"modelSource" | "activeModelKey">, "config" | "theme" | "options" | "persist">,
 ): SettingItem => {
+  type PiModel = Parameters<typeof getSupportedThinkingLevels>[0];
+  const asPiModel = (model: ModelLike): PiModel => model as unknown as PiModel;
+  const resolveSettingsModel = (modelKey?: string): ModelLike | undefined => {
+    const effectiveKey = modelKey || options.activeModelKey;
+    return effectiveKey ? resolveApprovalModel(effectiveKey, options.modelSource.models) : undefined;
+  };
+  const thinkingCapabilities = (model: ModelLike | undefined) => {
+    if (typeof model?.reasoning !== "boolean") return undefined;
+    const piModel = asPiModel(model);
+    return {
+      levels: getSupportedThinkingLevels(piModel),
+      effective: clampThinkingLevel(piModel, config.approvals.thinking),
+    };
+  };
   const selectedApprovalModel = config.approvals.model || INHERIT_VALUE;
   const showApprovalThinking = !isJevApprovalModel(config.approvals.model);
+  const effectiveApprovalThinking = thinkingCapabilities(resolveSettingsModel(config.approvals.model))?.effective
+    ?? config.approvals.thinking;
   const approvalModelDescription =
     "Pi or Jev model used as the auto-mode safety classifier. Inherit uses the active session model. Choose the model's reasoning effort inside this setting. Jev requires /login jev (TypeSafe), the existing openrouter credential (OpenRouter), or the existing vercel-ai-gateway credential (Vercel AI Gateway).";
   const approvalModelItems = () => {
     const selectedModel = config.approvals.model || INHERIT_VALUE;
     const showThinking = !isJevApprovalModel(config.approvals.model);
+    const capabilities = thinkingCapabilities(resolveSettingsModel(config.approvals.model));
+    const currentThinking = capabilities?.effective ?? config.approvals.thinking;
     const modelPicker = modelPickerSubmenu(
       theme,
       {
@@ -268,7 +287,7 @@ export const buildApprovalsSection = (
       setting(
         "approvals.model",
         "Model",
-        showThinking ? `${selectedModel} · ${thinkingLabel(config.approvals.thinking)}` : selectedModel,
+        showThinking ? `${selectedModel} · ${thinkingLabel(currentThinking)}` : selectedModel,
         {
           description:
             "Safety classifier model. Inherit uses the active Pi session model. Jev uses typed judgments, not chat.",
@@ -276,11 +295,12 @@ export const buildApprovalsSection = (
         },
       ),
       ...(showThinking ? [
-        setting("approvals.thinking", "Thinking", thinkingLabel(config.approvals.thinking), {
-          description: "Reasoning effort for the selected ordinary Pi auto-mode classifier. Off omits reasoning; non-reasoning models ignore this setting.",
+        setting("approvals.thinking", "Thinking", thinkingLabel(currentThinking), {
+          description: "Reasoning effort supported by the selected Pi classifier model. Saved unsupported levels use Pi's effective clamped value.",
           submenu: thinkingSubmenu(theme, {
             title: "Auto approval thinking",
-            description: "Reasoning effort forwarded to reasoning-capable Pi classifiers. Off omits reasoning.",
+            description: "Only reasoning levels supported by the selected Pi classifier are shown.",
+            ...(capabilities ? { levels: capabilities.levels } : {}),
           }),
         }),
       ] : []),
@@ -296,7 +316,7 @@ export const buildApprovalsSection = (
   const approvalModel = setting(
     "approvals.model",
     "Auto model",
-    showApprovalThinking ? `${selectedApprovalModel} · ${thinkingLabel(config.approvals.thinking)}` : selectedApprovalModel,
+    showApprovalThinking ? `${selectedApprovalModel} · ${thinkingLabel(effectiveApprovalThinking)}` : selectedApprovalModel,
     {
       description: approvalModelDescription,
       submenu: sectionSubmenu(
