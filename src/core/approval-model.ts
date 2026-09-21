@@ -28,6 +28,17 @@ export const resolveCodexAutoReviewModel = <T extends ApprovalModelLike>(
     ...template,
     id: CODEX_AUTO_REVIEW_ID,
     name: "Codex Auto Review",
+    reasoning: true,
+    input: ["text"],
+    thinkingLevelMap: {
+      off: null,
+      minimal: null,
+      low: "low",
+      medium: "medium",
+      high: "high",
+      xhigh: "xhigh",
+      max: "max",
+    },
   } as T;
 };
 

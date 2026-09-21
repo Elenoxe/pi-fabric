@@ -26,6 +26,16 @@ describe("Codex approval model", () => {
       name: "Codex Auto Review",
       api: "openai-codex-responses",
     });
+    expect(derived).toMatchObject({
+      reasoning: true,
+      input: ["text"],
+      thinkingLevelMap: {
+        off: null,
+        minimal: null,
+        low: "low",
+        max: "max",
+      },
+    });
     expect(derived).not.toBe(template);
   });
 
