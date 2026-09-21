@@ -373,7 +373,7 @@ Fabric risk classes are `read`, `write`, `execute`, `network`, and `agent`. Appr
   }
   ```
 
-  Exact refs take precedence over the action's broad risk policy. The override is used only while resolving approval: registry risk, effect metadata, classifier input, and audit metadata remain unchanged. `allow`, `ask`, `auto`, and `deny` are exact policies; a risk token resolves through that risk's broad policy.
+  Exact refs take precedence over the action's broad risk policy. The override is used only while resolving approval: registry risk, effect metadata, and classifier input remain unchanged; audit metadata preserves the declared `risk` and records the effective `approvalRisk` when a risk remap applies. `allow`, `ask`, `auto`, and `deny` are exact policies; a risk token resolves through that risk's broad policy.
 
 - Set `capture.hideFromModel` to `false` to index non-core extension tools without hiding them from the model's active set.
 - Names in `capture.keepVisible` stay in the model-facing active set of both Fabric and Pi. Pi core names are the exception: they remain Fabric-owned in full code mode.
