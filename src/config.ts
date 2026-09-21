@@ -23,7 +23,8 @@ import {
   type CodePreviewSettings,
 } from "./ui/code-preview.js";
 
-type FabricApprovalMode = "allow" | "ask" | "auto" | "deny";
+export type FabricApprovalMode = "allow" | "ask" | "auto" | "deny";
+export type FabricApprovalOverride = FabricRisk | FabricApprovalMode;
 export type FabricAgentTransport =
   | "auto"
   | "process"
@@ -74,6 +75,8 @@ export interface FabricApprovalConfig {
   network: FabricApprovalMode;
   agent: FabricApprovalMode;
   model?: string;
+  /** Exact action refs select a risk policy or direct approval mode. */
+  overrides: Record<string, FabricApprovalOverride>;
 }
 
 /** Session-start background revalidation scope for the MCP descriptor cache:
@@ -380,6 +383,7 @@ export const DEFAULT_FABRIC_CONFIG: FabricConfig = {
     execute: "allow",
     network: "allow",
     agent: "allow",
+    overrides: {},
   },
   mcp: {
     enabled: true,
@@ -683,6 +687,27 @@ const riskValue = (value: unknown, fallback: FabricRisk): FabricRisk =>
     ? value
     : fallback;
 
+const approvalOverride = (value: unknown): FabricApprovalOverride | undefined =>
+  value === "read" ||
+  value === "write" ||
+  value === "execute" ||
+  value === "network" ||
+  value === "agent" ||
+  value === "allow" ||
+  value === "ask" ||
+  value === "auto" ||
+  value === "deny"
+    ? value
+    : undefined;
+
+const approvalOverrides = (value: unknown): Record<string, FabricApprovalOverride> =>
+  Object.fromEntries(
+    Object.entries(objectValue(value)).flatMap(([ref, raw]) => {
+      if (!/^[a-z][a-z0-9_-]*\.[a-zA-Z0-9_.$-]+$/.test(ref)) return [];
+      const override = approvalOverride(raw);
+      return override === undefined ? [] : [[ref, override]];
+    }),
+  );
 export const normalizeFabricConfig = (input: Record<string, unknown>): FabricConfig => {
   const executor = objectValue(input.executor);
   const cpython = objectValue(executor.cpython);
@@ -726,6 +751,7 @@ export const normalizeFabricConfig = (input: Record<string, unknown>): FabricCon
       )
     : DEFAULT_FABRIC_CONFIG.agents.defaultTools;
   const approvalModel = normalizeJevApprovalModel(stringValue(approvals.model));
+  const configuredApprovalOverrides = approvalOverrides(approvals.overrides);
   const configPath = stringValue(mcp.configPath);
   const meshRoot = stringValue(mesh.root);
   const memoryIndexDir = stringValue(memory.indexDir);
@@ -882,6 +908,7 @@ export const normalizeFabricConfig = (input: Record<string, unknown>): FabricCon
       network: approvalMode(approvals.network, DEFAULT_FABRIC_CONFIG.approvals.network),
       agent: approvalMode(approvals.agent, DEFAULT_FABRIC_CONFIG.approvals.agent),
       ...(approvalModel ? { model: approvalModel } : {}),
+      overrides: configuredApprovalOverrides,
     },
     mcp: {
       enabled: booleanValue(mcp.enabled, DEFAULT_FABRIC_CONFIG.mcp.enabled),

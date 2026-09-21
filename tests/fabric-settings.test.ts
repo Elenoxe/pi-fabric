@@ -19,6 +19,7 @@ import {
 } from "../src/ui/settings.js";
 import { buildMcpSection } from "../src/ui/settings-sections-execution.js";
 import { SectionSubmenu } from "../src/ui/settings-submenus.js";
+import { buildPartial, coerceValue } from "../src/ui/settings-values.js";
 
 const theme = {
   fg: (_color: string, text: string) => text,
@@ -622,6 +623,56 @@ describe("FabricSettingsComponent", () => {
     list.submenuComponent.handleInput("\r");
     expect(applied.at(-1)).toEqual({ id: "approvals.model", value: "pi-fabric/openrouter/jev-1.13" });
     expect(source.models.some(model => model.provider === "jev")).toBe(false);
+  });
+  it("persists exact dotted action refs in the overrides map without nesting their key segments", () => {
+    const ref = "extensions.deploy.worker";
+    const sibling = "pi.bash";
+    const applied: Array<{ id: string; value: unknown }> = [];
+    const config = structuredClone(DEFAULT_FABRIC_CONFIG);
+    config.approvals.overrides = { [ref]: "ask", [sibling]: "read" };
+    const items = buildFabricSettingsItems(theme, config, (id, value) => applied.push({ id, value }), {
+      keepVisibleCandidates: ["fabric_exec"], modelSource: fakeModelSource,
+    });
+    const approvals = items.find(item => item.id === "approvals")!;
+    const approvalSection = approvals.submenu!("", () => {}) as any;
+    const exact = approvalSection.items.find((item: { id: string }) => item.id === "approvals.overrides")!;
+    const exactSection = exact.submenu!("", () => {}) as any;
+    const mode = exactSection.items.find((item: { id: string }) => item.id === `approvals.overrides.${ref}`)!;
+
+    exactSection.applyChange(mode.id, "deny");
+
+    expect(applied.at(-1)).toEqual({ id: mode.id, value: "deny" });
+    expect(buildPartial(mode.id, "deny", config)).toEqual({
+      approvals: { overrides: { [ref]: "deny", [sibling]: "read" } },
+    });
+  });
+
+  it("adds a manual exact override through the ref=value input", () => {
+    const config = structuredClone(DEFAULT_FABRIC_CONFIG);
+    config.approvals.overrides = { "pi.bash": "ask" };
+    const applied: Array<{ id: string; value: unknown }> = [];
+    const items = buildFabricSettingsItems(theme, config, (id, value) => applied.push({ id, value }), {
+      keepVisibleCandidates: ["fabric_exec"], modelSource: fakeModelSource,
+    });
+    const approvals = items.find(item => item.id === "approvals")!;
+    const approvalSection = approvals.submenu!("", () => {}) as any;
+    const exact = approvalSection.items.find((item: { id: string }) => item.id === "approvals.overrides")!;
+    const exactSection = exact.submenu!("", () => {}) as any;
+    const add = exactSection.items.find((item: { id: string }) => item.id === "approvals.overrides.add")!;
+    const input = add.submenu!("", (value: string) => exactSection.applyChange(add.id, value)) as any;
+    input.submitRpc("extensions.deploy.worker=network");
+
+    expect(applied.at(-1)).toEqual({
+      id: add.id,
+      value: { ref: "extensions.deploy.worker", override: "network" },
+    });
+    expect(buildPartial(
+      add.id,
+      coerceValue(add.id, "extensions.deploy.worker=network", config),
+      config,
+    )).toEqual({
+      approvals: { overrides: { "pi.bash": "ask", "extensions.deploy.worker": "network" } },
+    });
   });
 
   it("persists a Prewalk model selection and reopens with its checkmark", () => {

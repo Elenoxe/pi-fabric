@@ -354,6 +354,7 @@ export class FabricRuntimeState {
     this.#speculation = undefined;
     this.activity.reset();
     this.sessionApprovals.approvedRisks.clear();
+    this.sessionApprovals.approvedRefs.clear();
     this.#cwd = context.cwd;
     const projectTrusted = this.#managedHost ? false : context.isProjectTrusted();
     this.#managedHost?.seal();

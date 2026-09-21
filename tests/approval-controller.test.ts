@@ -22,8 +22,8 @@ const policies = {
   execute: "deny" as const,
   network: "ask" as const,
   agent: "ask" as const,
+  overrides: {},
 };
-
 const tuiContext = (
   custom: (...args: unknown[]) => Promise<unknown>,
   notify = vi.fn(),
@@ -50,6 +50,83 @@ describe("ApprovalController", () => {
     expect(custom).toHaveBeenCalledTimes(2);
     expect(notify).toHaveBeenCalledWith("Allowed once: demo.write", "info");
     expect(notify).toHaveBeenCalledWith("Allowed once: demo.writeAgain", "info");
+  });
+  it("uses an exact token override before the action risk policy", async () => {
+    const controller = new ApprovalController(
+      { ...policies, read: "allow", write: "deny", overrides: { "demo.write": "read" } },
+      { hasUI: false } as ExtensionContext,
+    );
+    await expect(controller.approve(action)).resolves.toBeUndefined();
+  });
+
+  it("passes the original action metadata to exact auto approval", async () => {
+    const classify = vi.fn(async () => ({
+      decision: "allow" as const,
+      reason: "Safe",
+      model: "test/classifier",
+      usage: {
+        input: 1,
+        output: 1,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 2,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+    }));
+    const controller = new ApprovalController(
+      { ...policies, overrides: { "demo.write": "auto" } },
+      { hasUI: false } as ExtensionContext,
+      new FabricSessionApprovals(),
+      { classify } as unknown as FabricAutoApprovalClassifier,
+    );
+
+    await controller.approve(action, { path: "workspace" });
+
+    expect(classify).toHaveBeenCalledWith(action, { path: "workspace" }, expect.anything(), undefined);
+  });
+
+  it("keeps exact ask grants scoped to their action ref", async () => {
+    const custom = vi.fn()
+      .mockResolvedValueOnce("allow-session")
+      .mockResolvedValueOnce("allow-once");
+    const session = new FabricSessionApprovals();
+    const controller = new ApprovalController(
+      {
+        ...policies,
+        overrides: {
+          "demo.write": "ask",
+          "demo.writeLater": "ask",
+        },
+      },
+      tuiContext(custom),
+      session,
+    );
+
+    await controller.approve(action);
+    await controller.approve({ ...action, ref: "demo.writeLater" });
+    await controller.approve(action);
+
+    expect(custom).toHaveBeenCalledTimes(2);
+    expect(session.approvedRefs).toContain("demo.write");
+    expect(session.approvedRisks).not.toContain("write");
+  });
+
+  it("does not let a broad session grant bypass an exact ask or deny", async () => {
+    const session = new FabricSessionApprovals();
+    session.approvedRisks.add("write");
+    const ask = new ApprovalController(
+      { ...policies, overrides: { "demo.write": "ask" } },
+      { hasUI: false } as ExtensionContext,
+      session,
+    );
+    await expect(ask.approve(action)).rejects.toThrow("no interactive UI");
+
+    const deny = new ApprovalController(
+      { ...policies, overrides: { "demo.write": "deny" } },
+      { hasUI: false } as ExtensionContext,
+      session,
+    );
+    await expect(deny.approve(action)).rejects.toThrow("denied by the Fabric write policy");
   });
 
   it("shares an Always allow grant across the Pi session", async () => {

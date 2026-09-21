@@ -119,6 +119,26 @@ describe("Fabric configuration", () => {
     expect(config.mesh.actorQueueLimit).toBe(1);
     expect(config.mesh.eventContextChars).toBe(1_000_000);
   });
+  it("normalizes exact approval overrides and drops malformed refs or values", () => {
+    expect(DEFAULT_FABRIC_CONFIG.approvals.overrides).toEqual({});
+    const config = normalizeFabricConfig({
+      approvals: {
+        overrides: {
+          "pi.bash": "execute",
+          "extensions.deploy": "network",
+          "pi.read": "allow",
+          "bad ref": "deny",
+          "extensions.empty": "invalid",
+          "extensions.object": { mode: "ask" },
+        },
+      },
+    });
+    expect(config.approvals.overrides).toEqual({
+      "pi.bash": "execute",
+      "extensions.deploy": "network",
+      "pi.read": "allow",
+    });
+  });
 
   it("normalizes executor timeout ceilings and per-ref floors", () => {
     const normalized = normalizeFabricConfig({

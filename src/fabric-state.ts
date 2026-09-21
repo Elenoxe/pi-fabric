@@ -171,6 +171,7 @@ export class FabricState {
     this.prewalkDrift.clear();
     this.activity.reset();
     this.sessionApprovals.approvedRisks.clear();
+    this.sessionApprovals.approvedRefs.clear();
     this.#widgetDismissedAt = 0;
     context.ui.setStatus("fabric-prewalk", undefined);
 

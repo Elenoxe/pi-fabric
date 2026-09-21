@@ -360,11 +360,26 @@ A compatible exact-name core override is an additive extension of its existing `
 Fabric risk classes are `read`, `write`, `execute`, `network`, and `agent`. Approval policy values are `allow`, `ask`, `auto`, or `deny`. Policies cover actions invoked inside `fabric_exec` and top-level model-requested tools left on Pi's native path. Native calls keep Pi's original implementation, result shape, and renderer. Fabric adds only the supported interception hook that runs before execution.
 
 - Captured and directly registered tools default to the conservative `execute` risk because Pi tool definitions do not declare effects. Add exact tool-name overrides under `capture.risks`. Fovea's verified graph-navigation tools (`fovea_sketch`, `fovea_focus`, `fovea_dwell`, and `fovea_impact`) are read-only exceptions that default to `read`.
+- Exact action overrides live under `approvals.overrides`; keys are literal action refs and never wildcards. Each value is exactly one of `read`, `write`, `execute`, `network`, `agent`, `allow`, `ask`, `auto`, or `deny`. A risk token selects that risk class policy; an approval token directly selects the mode. For example:
+
+  ```json
+  {
+    "approvals": {
+      "overrides": {
+        "pi.bash": "ask",
+        "extensions.deploy.worker": "network"
+      }
+    }
+  }
+  ```
+
+  Exact refs take precedence over the action's broad risk policy. The override is used only while resolving approval: registry risk, effect metadata, classifier input, and audit metadata remain unchanged. `allow`, `ask`, `auto`, and `deny` are exact policies; a risk token resolves through that risk's broad policy.
+
 - Set `capture.hideFromModel` to `false` to index non-core extension tools without hiding them from the model's active set.
 - Names in `capture.keepVisible` stay in the model-facing active set of both Fabric and Pi. Pi core names are the exception: they remain Fabric-owned in full code mode.
 - Extension tool names appear in the prompt as a names-only roster; descriptions and schemas are resolved on demand via `tools.list` / `tools.search` / `tools.describe` before first use.
-- An `ask` policy emits a warning notification and opens an explicit **Allow once** / **Allow for this session** / **Deny** permission prompt. These options match Claude-style approval scopes. **Allow once** authorizes only the requested action. **Allow for this session** keeps that risk class authorized until the current Pi session ends. The TUI uses an inline wizard. RPC clients receive the equivalent `select` dialog.
-- Fabric serializes concurrent requests so a one-time approval never silently widens to sibling calls. Session-wide grants apply to native calls and to `fabric_exec`. Escape, dismissal, unavailable interactive UI, and session restart all fail closed.
+- An `ask` policy emits a warning notification and opens an explicit **Allow once** / **Allow for this session** / **Deny** permission prompt. These options match Claude-style approval scopes. **Allow once** authorizes only the requested action. **Allow for this session** keeps the broad risk class authorized until the current Pi session ends, unless an exact `ask` or `auto` override matched; then it grants only that exact ref. Existing broad grants never bypass an exact `ask`, `auto`, or `deny`. The TUI uses an inline wizard. RPC clients receive the equivalent `select` dialog.
+- Fabric serializes concurrent requests so a one-time approval never silently widens to sibling calls. Session-wide grants apply to native calls and to `fabric_exec`; exact-ref grants do not widen to another action with the same risk. Escape, dismissal, unavailable interactive UI, and session restart all fail closed.
 
 ### Auto approval mode
 

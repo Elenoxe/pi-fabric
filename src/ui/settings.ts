@@ -78,7 +78,7 @@ export async function openFabricSettings(
   const apply = (id: string, value: unknown): void => {
     const partial = id === COMPACTION_THRESHOLD_SETTING_ID && activeModelKey
       ? compactionThresholdPartial(activeModelKey, value as CompactionThresholdSelection)
-      : buildPartial(id, value);
+      : buildPartial(id, value, settingsConfig);
     try {
       saveFabricConfig(
         { cwd: context.cwd, agentDir, projectTrusted, scope: saveScope },

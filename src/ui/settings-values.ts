@@ -3,6 +3,7 @@ import {
   MAX_COMPACTION_RATIO_THRESHOLD,
   clampCompactionRatioThreshold,
   QUICKJS_MAX_MEMORY_LIMIT_BYTES,
+  type FabricApprovalOverride,
   type FabricConfig,
   clampCompactionTokenThreshold,
 } from "../config.js";
@@ -14,6 +15,7 @@ import {
 
 export const BOOLEANS = ["true", "false"] as const;
 export const APPROVAL_MODES = ["allow", "ask", "auto", "deny"] as const;
+export const APPROVAL_OVERRIDE_INHERIT_VALUE = INHERIT_VALUE;
 export const RUNNERS = ["pi", "claude", "veda"] as const;
 export const TRANSPORTS = ["auto", "process", "tmux", "screen", "localterm", "herdr"] as const;
 export const WIDGET_MODES = ["auto", "always", "hidden"] as const;
@@ -62,6 +64,7 @@ export const SHIKI_THEME_PRESETS = [
 ] as const;
 
 export const RISKS = ["read", "write", "execute", "network", "agent"] as const;
+export const APPROVAL_OVERRIDE_VALUES = [...RISKS, ...APPROVAL_MODES] as const;
 export const CORE_RISK_TOOLS = ["read", "grep", "find", "edit", "write", "bash", "powershell"] as const;
 export const CORE_DEFAULT_TOOL_CANDIDATES = ["read", "bash", "powershell", "edit", "write", "grep", "find", "ls"];
 export const BUDGET_VALUES = [0, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10];
@@ -193,6 +196,14 @@ export const parseFormattedNumericValue = (value: string): number => {
 };
 
 export const coerceValue = (id: string, value: string, config: FabricConfig): unknown => {
+  if (id === "approvals.overrides.add") {
+    const match = /^(.+?)\s*=\s*(read|write|execute|network|agent|allow|ask|auto|deny)$/.exec(value.trim());
+    return match && /^[a-z][a-z0-9_-]*\.[a-zA-Z0-9_.$-]+$/.test(match[1]!)
+      ? { ref: match[1]!, override: match[2]! }
+      : undefined;
+  }
+  const overrideField = /^approvals\.overrides\.(.+)$/.exec(id);
+  if (overrideField) return value === APPROVAL_OVERRIDE_INHERIT_VALUE ? null : value;
   if (id === COMPACTION_THRESHOLD_SETTING_ID) {
     if (value === COMPACTION_DEFAULT_THRESHOLD_LABEL) return { mode: "default" };
     const tokens = /^(.+?) tokens$/.exec(value);
@@ -235,7 +246,31 @@ export const coerceValue = (id: string, value: string, config: FabricConfig): un
   return value;
 };
 
-export const buildPartial = (id: string, value: unknown): Record<string, unknown> => {
+const isApprovalOverrideValue = (value: unknown): value is FabricApprovalOverride =>
+  typeof value === "string" && /^(?:read|write|execute|network|agent|allow|ask|auto|deny)$/.test(value);
+
+export const buildPartial = (
+  id: string,
+  value: unknown,
+  config?: FabricConfig,
+): Record<string, unknown> => {
+  const manualEntry = id === "approvals.overrides.add" &&
+    typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as { ref?: unknown; override?: unknown }
+    : undefined;
+  const overrideRef = /^approvals\.overrides\.(.+)$/.exec(id)?.[1];
+  const ref = manualEntry?.ref ?? (overrideRef === "add" ? undefined : overrideRef);
+  const override = manualEntry?.override ?? (manualEntry ? undefined : value);
+  if (typeof ref === "string") {
+    if (!/^[a-z][a-z0-9_-]*\.[a-zA-Z0-9_.$-]+$/.test(ref)) return {};
+    const overrides = { ...config?.approvals.overrides };
+    if (override === null || override === undefined) delete overrides[ref];
+    else if (isApprovalOverrideValue(override)) overrides[ref] = override;
+    else return {};
+    return { approvals: { overrides } };
+  }
+  if (id === "approvals.overrides.add") return {};
+
   const segments = id.split(".");
   const root: Record<string, unknown> = {};
   let current: Record<string, unknown> = root;
@@ -266,7 +301,7 @@ export const summaryFor = (id: string, config: FabricConfig): string => {
     case "schema":
       return config.schema.mode;
     case "approvals":
-      return config.approvals.execute;
+      return `${config.approvals.execute}${Object.keys(config.approvals.overrides).length > 0 ? ` · ${Object.keys(config.approvals.overrides).length} exact` : ""}`;
     case "mcp":
       return config.mcp.enabled
         ? config.mcp.jev.semanticSearch ? "enabled · semantic" : "enabled"

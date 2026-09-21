@@ -24,6 +24,8 @@ import {
   RESULT_FORMATS,
   SCHEMA_MODES,
   APPROVAL_MODES,
+  APPROVAL_OVERRIDE_VALUES,
+  APPROVAL_OVERRIDE_INHERIT_VALUE,
 } from "./settings-values.js";
 import { maxExecutorMemoryLimitBytes } from "../config.js";
 import { INHERIT_VALUE } from "./model-picker.js";
@@ -240,6 +242,37 @@ export const buildSchemaSection = (
 export const buildApprovalsSection = (
   { config, theme, options, persist }: Pick<SettingsSectionContext<"modelSource">, "config" | "theme" | "options" | "persist">,
 ): SettingItem => {
+  const exactOverrideItems = () => [
+    ...Object.entries(config.approvals.overrides).map(([ref, override]) =>
+      setting(`approvals.overrides.${ref}`, ref, override, {
+        description: `Approval policy or risk policy selected for the exact ${ref} action.`,
+        values: [APPROVAL_OVERRIDE_INHERIT_VALUE, ...APPROVAL_OVERRIDE_VALUES],
+      }),
+    ),
+    setting("approvals.overrides.add", "Add exact override", "", {
+      description: "Enter an exact action ref and one token as ref=read, ref=write, ref=execute, ref=network, ref=agent, ref=allow, ref=ask, ref=auto, or ref=deny.",
+      submenu: stringInputSubmenu(
+        theme,
+        "Add exact approval override",
+        "Enter ref=value. Refs are literal; wildcards and prefixes are not supported.",
+      ),
+    }),
+  ];
+  const exactOverrides = setting(
+    "approvals.overrides",
+    "Exact action overrides",
+    `${Object.keys(config.approvals.overrides).length} configured`,
+    {
+      description: "A literal action ref selects one risk policy or direct approval mode. It does not change registry risk or effect metadata.",
+      submenu: sectionSubmenu(
+        theme,
+        "Exact action overrides",
+        "Choose a token for an existing ref, or add one manually as ref=value.",
+        exactOverrideItems,
+        persist,
+      ),
+    },
+  );
   return setting("approvals", "Approvals", summaryFor("approvals", config), {
     description: "Per-action approval policy for Fabric and model-requested native tool calls.",
     submenu: sectionSubmenu(
@@ -273,6 +306,7 @@ export const buildApprovalsSection = (
               "Enter a probability from 0 to 1 (default 0.50). Higher values are more conservative. 0 allows every judgment whose secrets and destructive verdicts are clean; 1 requires a probability of 1. Errors and missing user text still require approval."),
           }),
         ] : []),
+        exactOverrides,
         setting("approvals.read", "Read", config.approvals.read, {
           description: "Approval policy for read operations. Read is normally safe to leave allowed.",
           values: APPROVAL_MODES,

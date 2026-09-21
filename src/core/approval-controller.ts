@@ -22,7 +22,7 @@ const selectListThemeFor = (theme: unknown) => {
     noMatch: (text: string) => apply("muted", text),
   };
 };
-import type { FabricApprovalConfig } from "../config.js";
+import type { FabricApprovalConfig, FabricApprovalMode } from "../config.js";
 import type { FabricRisk } from "../protocol.js";
 import type { ResolvedFabricAction } from "./action-registry.js";
 import {
@@ -46,6 +46,7 @@ const sessionLabel = (risk: FabricRisk): string =>
 
 export class FabricSessionApprovals {
   readonly approvedRisks = new Set<FabricRisk>();
+  readonly approvedRefs = new Set<string>();
   #tail: Promise<void> = Promise.resolve();
 
   async serialize<T>(request: () => Promise<T>): Promise<T> {
@@ -96,24 +97,32 @@ export class ApprovalController {
     action: ResolvedFabricAction,
     args: Record<string, unknown> = {},
   ): Promise<void> {
+    const override = this.config.overrides[action.ref];
+    const exact = override !== undefined;
+    const mode: FabricApprovalMode = override === undefined
+      ? this.config[action.risk]
+      : override === "allow" || override === "ask" || override === "auto" || override === "deny"
+        ? override
+        : this.config[override];
+
     // This is an immutable host capability, not a model/configurable network grant.
     if (action.risk === "network" && this.brokeredNetwork?.(action.provider) === true) return;
-    const mode = this.config[action.risk];
-    if (
-      mode === "allow" ||
-      (!this.brokeredNetwork && (
-        this.#inheritedRisks.has(action.risk) ||
-        this.sessionApprovals.approvedRisks.has(action.risk)
-      ))
-    ) return;
+    if (mode === "allow") return;
     if (mode === "deny") {
       throw new FabricTraceSafeError(`${action.ref} is denied by the Fabric ${action.risk} policy`);
     }
+    if (
+      !exact &&
+      !this.brokeredNetwork &&
+      (this.#inheritedRisks.has(action.risk) || this.sessionApprovals.approvedRisks.has(action.risk))
+    ) return;
 
     await this.sessionApprovals.serialize(async () => {
-      if (this.sessionApprovals.approvedRisks.has(action.risk)) return;
+      if (exact
+        ? this.sessionApprovals.approvedRefs.has(action.ref)
+        : this.sessionApprovals.approvedRisks.has(action.risk)) return;
       if (mode !== "auto") {
-        await this.#requestApproval(action);
+        await this.#requestApproval(action, exact);
         return;
       }
 
@@ -137,6 +146,7 @@ export class ApprovalController {
         });
         await this.#requestApproval(
           action,
+          exact,
           `Auto mode could not determine safety: ${message}`,
         );
         return;
@@ -154,6 +164,7 @@ export class ApprovalController {
       if (decision.decision === "allow") return;
       await this.#requestApproval(
         action,
+        exact,
         `Auto mode escalated (${decision.model}): ${decision.reason}`,
       );
     });
@@ -161,6 +172,7 @@ export class ApprovalController {
 
   async #requestApproval(
     action: ResolvedFabricAction,
+    exact: boolean,
     escalationReason?: string,
   ): Promise<void> {
     if (!this.context.hasUI) {
@@ -172,19 +184,24 @@ export class ApprovalController {
       : `Fabric permission requested: ${action.ref} needs ${action.risk} access`;
     this.context.ui.notify(notification, "warning");
     const choice = this.context.mode === "tui"
-      ? await this.#requestTuiApproval(action, escalationReason)
-      : await this.#requestDialogApproval(action, escalationReason);
+      ? await this.#requestTuiApproval(action, exact, escalationReason)
+      : await this.#requestDialogApproval(action, exact, escalationReason);
 
     if (choice === "deny") {
       this.context.ui.notify(`Denied ${action.risk} access for ${action.ref}`, "warning");
       throw new FabricTraceSafeError(`User denied ${action.risk} access for ${action.ref}`);
     }
     if (choice === "allow-session") {
-      this.sessionApprovals.approvedRisks.add(action.risk);
-      this.context.ui.notify(
-        `Allowed ${action.risk} access for this Pi session`,
-        "info",
-      );
+      if (exact) {
+        this.sessionApprovals.approvedRefs.add(action.ref);
+        this.context.ui.notify(`Allowed ${action.ref} for this Pi session`, "info");
+      } else {
+        this.sessionApprovals.approvedRisks.add(action.risk);
+        this.context.ui.notify(
+          `Allowed ${action.risk} access for this Pi session`,
+          "info",
+        );
+      }
       return;
     }
     this.context.ui.notify(`Allowed once: ${action.ref}`, "info");
@@ -192,9 +209,10 @@ export class ApprovalController {
 
   async #requestDialogApproval(
     action: ResolvedFabricAction,
+    exact: boolean,
     escalationReason?: string,
   ): Promise<ApprovalChoice> {
-    const session = sessionLabel(action.risk);
+    const session = exact ? `Allow ${action.ref} for this session` : sessionLabel(action.risk);
     const picked = await this.context.ui.select(
       [
         `Pi Fabric permission · ${action.ref} requests ${action.risk} access. ${action.description}`,
@@ -209,6 +227,7 @@ export class ApprovalController {
 
   async #requestTuiApproval(
     action: ResolvedFabricAction,
+    exact: boolean,
     escalationReason?: string,
   ): Promise<ApprovalChoice> {
     const choice = await this.context.ui.custom<ApprovalChoice>((tui, theme, _keybindings, done) => {
@@ -236,7 +255,12 @@ export class ApprovalController {
       container.addChild(new Spacer(1));
       container.addChild(
         new Text(
-          theme.fg("dim", "Choose whether to allow only this call or this risk class for the session."),
+          theme.fg(
+            "dim",
+            exact
+              ? "Choose whether to allow only this call or this exact action for the session."
+              : "Choose whether to allow only this call or this risk class for the session.",
+          ),
           1,
           0,
         ),
@@ -250,8 +274,10 @@ export class ApprovalController {
         },
         {
           value: "allow-session",
-          label: sessionLabel(action.risk),
-          description: "Do not ask again for this risk class until the Pi session ends",
+          label: exact ? `Allow ${action.ref} for this session` : sessionLabel(action.risk),
+          description: exact
+            ? "Do not ask again for this exact action until the Pi session ends"
+            : "Do not ask again for this risk class until the Pi session ends",
         },
         {
           value: "deny",
