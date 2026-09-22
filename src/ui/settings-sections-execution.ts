@@ -13,6 +13,7 @@ import {
   modelPickerSubmenu,
   listSubmenu,
   thinkingSubmenu,
+  ModelSettingsSubmenu,
 } from "./settings-submenus.js";
 import {
   BOOLEANS,
@@ -283,24 +284,25 @@ export const buildApprovalsSection = (
       showThinking ? `${selectedModel} · ${thinkingLabel(currentThinking)}` : selectedModel,
       {
         description: "Safety classifier model. Inherit uses the active Pi session model. Jev uses typed judgments, not chat.",
-        submenu: (currentValue, done) => modelPicker(currentValue, (value) => {
-          if (value === undefined) return done();
-          done(value, { navigateTo: isJevApprovalModel(value) ? "jev.autoApprovalThreshold" : "approvals.thinking" });
-        }),
+        submenu: (_currentValue, done) => new ModelSettingsSubmenu(show =>
+          modelPicker(selectedModel, (value) => {
+            if (value === undefined) return done();
+            if (isJevApprovalModel(value)) return done(value, { navigateTo: "jev.autoApprovalThreshold" });
+            const selectedCapabilities = thinkingCapabilities(resolveSettingsModel(value === INHERIT_VALUE ? undefined : value));
+            show(thinkingSubmenu(theme, {
+              title: "Auto approval thinking",
+              description: "Only reasoning levels supported by the selected Pi classifier are shown.",
+              ...(selectedCapabilities ? { levels: selectedCapabilities.levels } : {}),
+            })(thinkingLabel(selectedCapabilities?.effective ?? config.approvals.thinking), thinking => {
+              if (thinking !== undefined) persist("approvals.thinking", thinking);
+              done(value);
+            }));
+          }),
+        ),
       },
     );
     return [
       approvalModel,
-      ...(showThinking ? [
-        setting("approvals.thinking", "Thinking", thinkingLabel(currentThinking), {
-          description: "Reasoning effort supported by the selected Pi classifier model. Saved unsupported levels use Pi's effective clamped value.",
-          submenu: thinkingSubmenu(theme, {
-            title: "Auto approval thinking",
-            description: "Only reasoning levels supported by the selected Pi classifier are shown.",
-            ...(capabilities ? { levels: capabilities.levels } : {}),
-          }),
-        }),
-      ] : []),
       ...(isJevApprovalModel(config.approvals.model) ? [
         setting("jev.autoApprovalThreshold", "Jev minimum probability", String(config.jev.autoApprovalThreshold), {
           description: "Minimum safety probability for automatic approval (0–1, default 0.50). Lower values allow more actions; secrets and destructive verdicts still escalate. Errors still require approval.",

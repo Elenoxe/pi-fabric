@@ -531,6 +531,25 @@ export const modelPickerSubmenu = (
   });
 };
 
+export class ModelSettingsSubmenu extends Container {
+  active!: Component;
+
+  constructor(create: (show: (component: Component) => void) => Component) {
+    super();
+    this.show(create(component => this.show(component)));
+  }
+
+  private show(component: Component): void {
+    this.active = component;
+    this.clear();
+    this.addChild(component);
+  }
+
+  handleInput(data: string): void {
+    this.active.handleInput?.(data);
+  }
+}
+
 export class SectionSubmenu extends Container {
   settingsList: SettingsList;
   readonly items: SettingItem[];

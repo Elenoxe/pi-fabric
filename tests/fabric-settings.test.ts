@@ -593,6 +593,8 @@ describe("FabricSettingsComponent", () => {
     const picker = list.submenuComponent;
     picker.handleInput("\x1b[B");
     picker.handleInput("\r");
+    expect(picker.render(100).join("\n")).toContain("Auto approval thinking");
+    picker.handleInput("\r");
 
     expect(applied.at(-1)).toEqual({
       id: "approvals.model",
@@ -611,7 +613,7 @@ describe("FabricSettingsComponent", () => {
     const list = section.settingsList as any;
     list.activateItem();
     const autoModel = list.submenuComponent as any;
-    const picker = list.submenuComponent;
+    const picker = list.submenuComponent.active;
     expect(picker.rpcChoices()).toContainEqual(expect.objectContaining({ value: "pi-fabric/typesafe/jev-1.13" }));
     expect(picker.rpcChoices()).toContainEqual(expect.objectContaining({ value: "pi-fabric/typesafe/jev-latest" }));
     expect(picker.rpcChoices().some((choice: { value: string }) => choice.value.startsWith("jev/"))).toBe(false);

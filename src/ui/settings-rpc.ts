@@ -11,6 +11,7 @@ import {
 } from "./settings-values.js";
 import {
   SectionSubmenu,
+  ModelSettingsSubmenu,
   SelectSubmenu,
   IntegerInputSubmenu,
   ProbabilityInputSubmenu,
@@ -124,6 +125,16 @@ const editRpcSetting = async (
     completed = true;
     selectedValue = value;
   });
+
+  if (component instanceof ModelSettingsSubmenu) {
+    while (!completed) {
+      const active = component.active;
+      await editRpcSetting(context, path, { ...item, submenu: () => active }, () => {});
+      if (component.active === active && !completed) active.handleInput?.("\x1b");
+    }
+    if (selectedValue !== undefined) onChange(item.id, selectedValue);
+    return;
+  }
 
   if (component instanceof SectionSubmenu) {
     await browseRpcSettings(

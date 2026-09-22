@@ -10,7 +10,7 @@ import { isJevApprovalModel } from "../src/jev/model-key.js";
 import type { FabricState } from "../src/fabric-state.js";
 import { FabricModelSelector } from "../src/ui/fabric-model-selector.js";
 import { buildFabricSettingsItems, openFabricSettings } from "../src/ui/settings.js";
-import { ProbabilityInputSubmenu, SectionSubmenu, SelectSubmenu } from "../src/ui/settings-submenus.js";
+import { ModelSettingsSubmenu, ProbabilityInputSubmenu, SectionSubmenu, SelectSubmenu } from "../src/ui/settings-submenus.js";
 import { coerceValue } from "../src/ui/settings-values.js";
 
 const theme = { fg: (_: string, text: string) => text, bg: (_: string, text: string) => text, bold: (text: string) => text } as unknown as Theme;
@@ -35,7 +35,7 @@ const activate = <T>(section: SectionSubmenu, id: string): T => {
   return (section.settingsList as unknown as { submenuComponent: T }).submenuComponent;
 };
 const openAutoModel = (section: SectionSubmenu) => section;
-const openAutoModelPicker = (section: SectionSubmenu) => activate<FabricModelSelector>(section, "approvals.model");
+const openAutoModelPicker = (section: SectionSubmenu) => activate<ModelSettingsSubmenu>(section, "approvals.model").active as FabricModelSelector;
 afterEach(() => vi.unstubAllEnvs());
 
 describe("Jev approval probability settings", () => {
@@ -73,11 +73,14 @@ describe("Jev approval probability settings", () => {
     const modelPicker = openAutoModelPicker(section);
 
     expect(modelPicker.selectRpc("openai-codex/codex-auto-review")).toBe(true);
-    expect(config.approvals.model).toBe("openai-codex/codex-auto-review");
-    const thinkingPicker = (section.settingsList as unknown as { submenuComponent: SelectSubmenu }).submenuComponent;
+    const flow = (section.settingsList as unknown as { submenuComponent: ModelSettingsSubmenu }).submenuComponent;
+    const thinkingPicker = flow.active as SelectSubmenu;
     expect(thinkingPicker.options.map(option => option.value)).toEqual(["low", "medium", "high", "xhigh", "max"]);
-    expect(section.items.find(item => item.id === thinkingId)?.currentValue).toBe("Low");
-    expect(config.approvals.thinking).toBe("minimal");
+    expect(section.items.some(item => item.id === thinkingId)).toBe(false);
+    thinkingPicker.selectRpc("high");
+    expect(config.approvals.model).toBe("openai-codex/codex-auto-review");
+    expect(config.approvals.thinking).toBe("high");
+    expect(section.items.find(item => item.id === "approvals.model")?.currentValue).toContain("High");
   });
   it("does not show Codex auto-review without a Codex Responses template", () => {
     const { open } = fixture(undefined, [{ provider: "anthropic", id: "claude" }]);
@@ -92,11 +95,9 @@ describe("Jev approval probability settings", () => {
     expect(Boolean(row)).toBe(Boolean(model && isJevApprovalModel(model)));
     if (row) expect(row.currentValue).toBe("0.5");
   });
-  it.each([undefined, "anthropic/chat", "pi-fabric/typesafe/jev-latest", "pi-fabric/openrouter/jev-latest", "pi-fabric/vercel-ai-gateway/jev-latest"])("shows reasoning only for ordinary Pi classifiers: %s", model => {
-    const { config, open } = fixture(model);
-    const row = openAutoModel(open()).items.find(item => item.id === thinkingId);
-    expect(Boolean(row)).toBe(!isJevApprovalModel(config.approvals.model));
-    if (row) expect(row.currentValue).toBe("Minimal");
+  it.each([undefined, "anthropic/chat", "pi-fabric/typesafe/jev-latest", "pi-fabric/openrouter/jev-latest", "pi-fabric/vercel-ai-gateway/jev-latest"])("never shows a standalone thinking setting: %s", model => {
+    const { open } = fixture(model);
+    expect(open().items.some(item => item.id === thinkingId)).toBe(false);
   });
 
   it("coerces labeled approval thinking to its canonical value", () => {
@@ -108,7 +109,7 @@ describe("Jev approval probability settings", () => {
     const section = open();
     const autoModel = openAutoModel(section);
     const autoRows = autoModel.items;
-    activate<FabricModelSelector>(autoModel, "approvals.model").selectRpc("pi-fabric/typesafe/jev-latest");
+    openAutoModelPicker(autoModel).selectRpc("pi-fabric/typesafe/jev-latest");
     expect(autoModel.items).toBe(autoRows);
     expect(autoRows.some(item => item.id === thresholdId)).toBe(true);
     const thresholdInput = (autoModel.settingsList as unknown as { submenuComponent?: ProbabilityInputSubmenu }).submenuComponent
