@@ -2,6 +2,7 @@ import { type ModelSource, buildClaudeModelSource } from "./model-picker.js";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { FabricConfig } from "../config.js";
 import { coerceValue } from "./settings-values.js";
+import type { SettingsSectionContext } from "./settings-section-context.js";
 import { markDrillIn } from "./settings-submenus.js";
 import type { SettingItem } from "@earendil-works/pi-tui";
 import {
@@ -42,6 +43,7 @@ export const buildFabricSettingsItems = (
     claudeModelSource?: ModelSource;
     activeModelKey?: string;
     cachedMcpServers?: readonly string[];
+    approvalTools?: NonNullable<SettingsSectionContext["options"]["approvalTools"]>;
   },
 ): SettingItem[] => {
   const persist = (id: string, newValue: string): void =>

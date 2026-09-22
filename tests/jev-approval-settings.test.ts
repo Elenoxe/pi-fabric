@@ -169,6 +169,8 @@ describe("Jev approval probability settings", () => {
         config, ensure: vi.fn(async () => {}),
         reloadConfig: vi.fn(() => Object.assign(config, loadFabricConfig({ cwd, agentDir, projectTrusted: true }))),
         agents: { claudeModels: vi.fn(async () => []) },
+        registry: { approvalActions: vi.fn().mockResolvedValue([]) },
+        pi: { getAllTools: () => [] },
       } as unknown as FabricState;
       let switched = false;
       let opened = false;

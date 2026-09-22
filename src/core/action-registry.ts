@@ -357,6 +357,14 @@ export class ActionRegistry {
       .sort((left, right) => left.name.localeCompare(right.name));
   }
 
+  /** Complete declared surface for host-side approval settings, not guest discovery. */
+  async approvalActions(context: FabricInvocationContext): Promise<ResolvedFabricAction[]> {
+    const lists = await Promise.all(this.#providerBindings.providers().map(async provider =>
+      (await provider.list({}, context)).map(descriptor => resolveDescriptor(provider, descriptor)),
+    ));
+    return lists.flat();
+  }
+
   async inspectCapabilities(
     requirements: readonly (string | FabricCapabilityRequirement)[],
     context: FabricInvocationContext,

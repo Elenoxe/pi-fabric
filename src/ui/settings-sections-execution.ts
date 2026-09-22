@@ -12,6 +12,7 @@ import {
   stringInputSubmenu,
   modelPickerSubmenu,
   listSubmenu,
+  stringOptionsSubmenu,
   thinkingSubmenu,
   ModelSettingsSubmenu,
 } from "./settings-submenus.js";
@@ -28,6 +29,7 @@ import {
   RESULT_FORMATS,
   SCHEMA_MODES,
   APPROVAL_MODES,
+  RISKS,
 } from "./settings-values.js";
 import { maxExecutorMemoryLimitBytes } from "../config.js";
 import { thinkingLabel } from "../thinking.js";
@@ -243,7 +245,7 @@ export const buildSchemaSection = (
 };
 
 export const buildApprovalsSection = (
-  { config, theme, options, persist }: Pick<SettingsSectionContext<"modelSource" | "activeModelKey">, "config" | "theme" | "options" | "persist">,
+  { config, theme, options, apply, persist }: Pick<SettingsSectionContext<"modelSource" | "activeModelKey" | "approvalTools">, "config" | "theme" | "options" | "apply" | "persist">,
 ): SettingItem => {
   type PiModel = Parameters<typeof getSupportedThinkingLevels>[0];
   const asPiModel = (model: ModelLike): PiModel => model as unknown as PiModel;
@@ -312,6 +314,23 @@ export const buildApprovalsSection = (
       ] : []),
     ];
   };
+  const overrides = setting("approvals.overrides", "Overrides", String(Object.keys(config.approvals.overrides).length), {
+    description: "Exact-tool approval overrides. Select none to use the original risk policy; risk values remap the policy category; allow/ask/auto/deny set a direct policy.",
+    submenu: sectionSubmenu(theme, "Approval overrides", "Tool name · Original permission · Override. Enter selects an override; none restores the original risk policy in this save scope.", () => {
+      const tools = options.approvalTools ?? [];
+      return tools.map(tool => setting(tool.ref, tool.name,
+        `${tool.risk}(${config.approvals[tool.risk]})${config.approvals.overrides[tool.ref] === undefined ? "" : ` → ${config.approvals.overrides[tool.ref]}`}`, {
+          description: `Provider: ${tool.provider}. Override applies to this exact tool only.`,
+          submenu: (_current, done) => stringOptionsSubmenu(theme,
+            ["none", ...RISKS, ...APPROVAL_MODES], tool.name,
+            `Original: ${tool.risk}(${config.approvals[tool.risk]}). Select none to restore the original policy; a risk uses that category's policy; allow/ask/auto/deny override it directly.`,
+          )(config.approvals.overrides[tool.ref] ?? "none", done),
+        })).sort((left, right) => left.label.localeCompare(right.label) || left.id.localeCompare(right.id));
+    }, (ref, value) => {
+      apply("approvals.overrides", { [ref]: value === "none" ? null : value });
+      overrides.currentValue = String(Object.keys(config.approvals.overrides).length);
+    }),
+  });
   return setting("approvals", "Approvals", summaryFor("approvals", config), {
     description: "Per-action approval policy for Fabric and model-requested native tool calls.",
     submenu: sectionSubmenu(
@@ -340,6 +359,7 @@ export const buildApprovalsSection = (
           description: "Approval policy for agent and actor operations. Auto classifies each request.",
           values: APPROVAL_MODES,
         }),
+        overrides,
       ],
       persist,
     ),

@@ -159,7 +159,7 @@ const editRpcSetting = async (
         value: option.value,
         label: option.label,
         ...(option.description ? { description: option.description } : {}),
-        current: option.value === item.currentValue || option.label === item.currentValue,
+        current: option.value === component.selectList.getSelectedItem()?.value,
       })),
     );
     if (selected === undefined || !component.selectRpc(selected)) return;

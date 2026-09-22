@@ -4,7 +4,7 @@ import path from "node:path";
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import type { CapturedToolCatalog } from "../src/capture/catalog.js";
-import { DEFAULT_FABRIC_CONFIG, loadFabricConfig } from "../src/config.js";
+import { DEFAULT_FABRIC_CONFIG, loadFabricConfig, normalizeFabricConfig } from "../src/config.js";
 import type { FabricState } from "../src/fabric-state.js";
 import type { ModelSource } from "../src/ui/model-picker.js";
 import {
@@ -623,15 +623,41 @@ describe("FabricSettingsComponent", () => {
     expect(applied.at(-1)).toEqual({ id: "approvals.model", value: "pi-fabric/openrouter/jev-1.13" });
     expect(source.models.some(model => model.provider === "jev")).toBe(false);
   });
-  it("does not expose exact action overrides in settings", () => {
+  it("edits exact action overrides through the final approvals submenu", () => {
     const config = structuredClone(DEFAULT_FABRIC_CONFIG);
     config.approvals.overrides = { "pi.write": "ask" };
-    const items = buildFabricSettingsItems(theme, config, () => {}, {
+    const applied: Array<{ id: string; value: unknown }> = [];
+    const items = buildFabricSettingsItems(theme, config, (id, value) => {
+      applied.push({ id, value });
+      config.approvals.overrides = normalizeFabricConfig({ approvals: {
+        overrides: { ...config.approvals.overrides, ...value as object },
+      } }).approvals.overrides;
+    }, {
       keepVisibleCandidates: ["fabric_exec"], modelSource: fakeModelSource,
+      approvalTools: [
+        { ref: "pi.write", provider: "pi", name: "write", risk: "write" },
+        { ref: "extensions.foo", provider: "extensions", name: "foo", risk: "execute" },
+      ],
     });
-    const approvals = items.find(item => item.id === "approvals")!;
-    const approvalSection = approvals.submenu!("", () => {}) as any;
-    expect(approvalSection.items.some((item: { id: string }) => item.id === "approvals.overrides")).toBe(false);
+    const approvals = items.find(item => item.id === "approvals")!.submenu!("", () => {}) as any;
+    expect(approvals.items.at(-1).id).toBe("approvals.overrides");
+    approvals.settingsList.selectItem("approvals.overrides");
+    approvals.handleInput("\r");
+    const overrides = approvals.settingsList.submenuComponent;
+    const originalPermission = `execute(${config.approvals.execute})`;
+    expect(overrides.items.find((item: { id: string }) => item.id === "extensions.foo").currentValue).toBe(originalPermission);
+    expect(overrides.items.map((item: { label: string }) => item.label)).toEqual(["foo ›", "write ›"]);
+    for (const value of ["read", "write", "execute", "network", "agent", "allow", "ask", "auto", "deny", "none"]) {
+      overrides.settingsList.selectItem("extensions.foo");
+      overrides.handleInput("\r");
+      const picker = overrides.settingsList.submenuComponent;
+      expect(picker.selectRpc(value)).toBe(true);
+      expect(applied.at(-1)).toEqual({ id: "approvals.overrides", value: { "extensions.foo": value === "none" ? null : value } });
+      expect(config.approvals.overrides["extensions.foo"]).toBe(value === "none" ? undefined : value);
+      expect(config.approvals.overrides["pi.write"]).toBe("ask");
+      expect(overrides.items.find((item: { id: string }) => item.id === "extensions.foo").currentValue)
+        .toBe(value === "none" ? originalPermission : `${originalPermission} → ${value}`);
+    }
   });
 
   it("persists a Prewalk model selection and reopens with its checkmark", () => {
@@ -852,6 +878,8 @@ describe("FabricSettingsComponent", () => {
       ensure: vi.fn(async () => {}),
       reloadConfig: vi.fn(() => { state.kernelReloadRequired = loadFabricConfig({ cwd, agentDir, projectTrusted: true }).executor.kernel !== config.executor.kernel; }),
       agents: { claudeModels: vi.fn(async () => []) },
+      registry: { approvalActions: vi.fn().mockResolvedValue([]) },
+      pi: { getAllTools: () => [] },
     };
     const context = {
       mode: "tui", cwd, isProjectTrusted: () => true,
@@ -893,6 +921,8 @@ describe("FabricSettingsComponent", () => {
           loadFabricConfig({ cwd, agentDir, projectTrusted: true }),
         )),
         agents: { claudeModels: vi.fn().mockResolvedValue([]) },
+        registry: { approvalActions: vi.fn().mockResolvedValue([]) },
+        pi: { getAllTools: () => [] },
       } as unknown as FabricState;
       const context = {
         mode: "tui",
@@ -950,6 +980,8 @@ describe("FabricSettingsComponent", () => {
         ensure: vi.fn().mockResolvedValue(undefined),
         reloadConfig: vi.fn(),
         agents: { claudeModels: vi.fn().mockResolvedValue([]) },
+        registry: { approvalActions: vi.fn().mockResolvedValue([]) },
+        pi: { getAllTools: () => [] },
       } as unknown as FabricState;
       const context = {
         mode: "tui",
@@ -1008,6 +1040,8 @@ describe("FabricSettingsComponent", () => {
         ensure: vi.fn().mockResolvedValue(undefined),
         reloadConfig: vi.fn(() => Object.assign(config, loadFabricConfig(location))),
         agents: { claudeModels: vi.fn().mockResolvedValue([]) },
+        registry: { approvalActions: vi.fn().mockResolvedValue([]) },
+        pi: { getAllTools: () => [] },
       } as unknown as FabricState;
       const context = {
         mode: "tui",
@@ -1070,6 +1104,8 @@ describe("FabricSettingsComponent", () => {
         ensure: vi.fn().mockResolvedValue(undefined),
         reloadConfig: vi.fn(() => Object.assign(config, loadFabricConfig(location))),
         agents: { claudeModels: vi.fn().mockResolvedValue([]) },
+        registry: { approvalActions: vi.fn().mockResolvedValue([]) },
+        pi: { getAllTools: () => [] },
       } as unknown as FabricState;
       let globalLines: string[] = [];
       let projectLines: string[] = [];
@@ -1136,6 +1172,8 @@ describe("FabricSettingsComponent", () => {
         ensure: vi.fn().mockResolvedValue(undefined),
         reloadConfig: vi.fn(() => Object.assign(config, loadFabricConfig(location))),
         agents: { claudeModels: vi.fn().mockResolvedValue([]) },
+        registry: { approvalActions: vi.fn().mockResolvedValue([]) },
+        pi: { getAllTools: () => [] },
       } as unknown as FabricState;
       const context = {
         mode: "tui",
@@ -1204,6 +1242,8 @@ describe("FabricSettingsComponent", () => {
           };
         }),
         agents: { claudeModels: vi.fn().mockResolvedValue([]) },
+        registry: { approvalActions: vi.fn().mockResolvedValue([]) },
+        pi: { getAllTools: () => [] },
       } as unknown as FabricState;
       let rootList: any;
       let nestedList: any;
@@ -1283,6 +1323,8 @@ describe("FabricSettingsComponent", () => {
           };
         }),
         agents: { claudeModels: vi.fn().mockResolvedValue([]) },
+        registry: { approvalActions: vi.fn().mockResolvedValue([]) },
+        pi: { getAllTools: () => [] },
       } as unknown as FabricState;
       let rootList: any;
       let nestedList: any;
@@ -1360,6 +1402,8 @@ describe("Fabric RPC settings", () => {
         ensure: vi.fn().mockResolvedValue(undefined),
         reloadConfig: vi.fn(() => Object.assign(config, loadFabricConfig({ cwd, agentDir, projectTrusted: true }))),
         agents: { claudeModels: vi.fn().mockResolvedValue([]) },
+        registry: { approvalActions: vi.fn().mockResolvedValue([]) },
+        pi: { getAllTools: () => [] },
       } as unknown as FabricState;
       const select = vi.fn(async (title: string, options: string[]) => {
         if (title.startsWith("Fabric settings › UI › Tool display")) {
@@ -1426,6 +1470,8 @@ describe("Fabric RPC settings", () => {
         ensure: vi.fn().mockResolvedValue(undefined),
         reloadConfig: vi.fn(() => Object.assign(config, loadFabricConfig({ cwd, agentDir, projectTrusted: true }))),
         agents: { claudeModels: vi.fn().mockResolvedValue([]) },
+        registry: { approvalActions: vi.fn().mockResolvedValue([]) },
+        pi: { getAllTools: () => [] },
       } as unknown as FabricState;
       const select = vi.fn(async (title: string, options: string[]) => {
         if (title.startsWith("Fabric settings › Agents › Default model")) {
@@ -1514,6 +1560,8 @@ describe("Fabric RPC settings", () => {
         ensure: vi.fn().mockResolvedValue(undefined),
         reloadConfig: vi.fn(() => Object.assign(config, loadFabricConfig({ cwd, agentDir, projectTrusted: true }))),
         agents: { claudeModels: vi.fn().mockResolvedValue([]) },
+        registry: { approvalActions: vi.fn().mockResolvedValue([]) },
+        pi: { getAllTools: () => [] },
       } as unknown as FabricState;
       const select = vi.fn(async (title: string, options: string[]) => {
         if (title.startsWith("Fabric settings › Agents › Default tools › ls")) {
@@ -1578,6 +1626,8 @@ describe("Fabric RPC settings", () => {
         ensure: vi.fn().mockResolvedValue(undefined),
         reloadConfig: vi.fn(() => Object.assign(config, loadFabricConfig({ cwd, agentDir, projectTrusted: true }))),
         agents: { claudeModels: vi.fn().mockResolvedValue([]) },
+        registry: { approvalActions: vi.fn().mockResolvedValue([]) },
+        pi: { getAllTools: () => [] },
       } as unknown as FabricState;
       const select = vi.fn(async (title: string, options: string[]) => {
         if (title.startsWith("Fabric settings › Compaction › Threshold")) {
@@ -1641,6 +1691,8 @@ describe("Fabric RPC settings", () => {
         ensure: vi.fn().mockResolvedValue(undefined),
         reloadConfig: vi.fn(() => Object.assign(config, loadFabricConfig({ cwd, agentDir, projectTrusted: true }))),
         agents: { claudeModels: vi.fn().mockResolvedValue([]) },
+        registry: { approvalActions: vi.fn().mockResolvedValue([]) },
+        pi: { getAllTools: () => [] },
       } as unknown as FabricState;
       const select = vi.fn(async (title: string, options: string[]) => {
         if (title.startsWith("Fabric settings › Full code mode")) {

@@ -1,6 +1,7 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { FabricConfig } from "../config.js";
 import type { ModelSource } from "./model-picker.js";
+import type { ResolvedFabricAction } from "../core/action-registry.js";
 
 interface SettingsSectionOptions {
   keepVisibleCandidates: readonly string[];
@@ -8,6 +9,7 @@ interface SettingsSectionOptions {
   claudeModelSource?: ModelSource;
   activeModelKey?: string;
   cachedMcpServers?: readonly string[];
+  approvalTools?: readonly Pick<ResolvedFabricAction, "ref" | "name" | "risk" | "provider">[];
 }
 
 // Section builders receive editor data and callbacks, never the runtime state.

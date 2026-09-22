@@ -116,6 +116,30 @@ export async function openFabricSettings(
     "fabric_exec",
     ...deps.capturedTools.list().map((tool) => tool.name),
   ]);
+  const approvalActions = await deps.state.registry.approvalActions({
+    cwd: context.cwd,
+    signal: undefined,
+    parentToolCallId: "fabric-approval-settings",
+    nestedToolCallId: "fabric-approval-settings",
+    extensionContext: context,
+    update: () => {},
+  });
+  const approvalTools = new Map(approvalActions.map(action => [action.ref, action]));
+  const captureRiskRefs = new Set(deps.capturedTools.list().flatMap(tool =>
+    [`pi.${tool.name}`, `extensions.${tool.name}`],
+  ));
+  for (const tool of deps.state.pi.getAllTools()) {
+    if (tool.name === "fabric_exec") continue;
+    const provider = tool.sourceInfo.source === "builtin" ? "pi" : "extensions";
+    const ref = `${provider}.${tool.name}`;
+    if (approvalTools.has(ref)) continue;
+    captureRiskRefs.add(ref);
+    approvalTools.set(ref, {
+      ref, provider, name: tool.name, description: tool.description,
+      inputSchema: tool.parameters as Record<string, unknown>,
+      risk: settingsConfig.capture.risks[tool.name] ?? settingsConfig.capture.defaultRisk,
+    });
+  }
   const modelSource = buildModelSource(context.modelRegistry, resolveAgentDir());
   const configuredClaudeModel = deps.state.config.agents.claude.model;
   const claudeModelSource: ModelSource = {
@@ -140,6 +164,14 @@ export async function openFabricSettings(
     settingsConfig = loadFabricConfigForScope(configLocation, scope);
     return buildFabricSettingsItems(theme, settingsConfig, apply, {
       keepVisibleCandidates,
+      approvalTools: [...approvalTools.values()].map(tool => ({
+        ...tool,
+        get risk() {
+          return captureRiskRefs.has(tool.ref)
+            ? settingsConfig.capture.risks[tool.name] ?? settingsConfig.capture.defaultRisk
+            : tool.risk;
+        },
+      })),
       modelSource,
       claudeModelSource,
       cachedMcpServers: listCachedMcpServerNames(mcpDescriptorCachePath(context.cwd)),
