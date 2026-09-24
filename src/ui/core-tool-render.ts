@@ -11,7 +11,6 @@ import type { FabricRenderAudit } from "./fabric-render.js";
 import {
   effectiveShikiThemeIsLight,
   highlightCode,
-  highlightFileLines,
   highlightSourceLines,
   languageFromPath,
   observePiTheme,
@@ -28,6 +27,7 @@ import {
   diffLineNumberWidth,
   formatDiffLineNumber,
   parseDiffLine,
+  parseAnchorLine,
   type ParsedDiffLine,
 } from "./word-diff/parse.js";
 
@@ -98,6 +98,52 @@ const escapeControlChars = (text: string): string =>
     .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, "�");
 
 const expandTabs = (text: string): string => text.replace(/\t/g, "    ");
+
+type RenderFile = { mtimeMs: number; ctimeMs: number; size: number; lines: string[]; chars: number; version: number };
+const renderFiles = new Map<string, RenderFile>();
+let renderFileChars = 0;
+let renderFileVersion = 0;
+const MAX_FILE_SOURCE_BYTES = positiveEnvInteger("CODE_PREVIEW_FILE_HIGHLIGHT_MAX_CHARS", 200_000);
+
+const readRenderFile = (path: string): RenderFile | null => {
+  const cached = renderFiles.get(path);
+  const drop = (): void => {
+    if (cached && renderFiles.delete(path)) renderFileChars -= cached.chars;
+  };
+  try {
+    const stat = statSync(path);
+    if (!stat.isFile() || stat.size > MAX_FILE_SOURCE_BYTES) { drop(); return null; }
+    if (cached && cached.mtimeMs === stat.mtimeMs && cached.ctimeMs === stat.ctimeMs && cached.size === stat.size) {
+      renderFiles.delete(path);
+      renderFiles.set(path, cached);
+      return cached;
+    }
+    drop();
+    const text = readFileSync(path, "utf8");
+    if (text.includes("\0")) return null;
+    const lines = text.replace(/\r\n?/g, "\n").split("\n").map(expandTabs);
+    const chars = lines.reduce((total, line) => total + line.length, 0);
+    if (chars > 4_000_000) return null;
+    const source = { mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs, size: stat.size, lines, chars, version: ++renderFileVersion };
+    renderFiles.set(path, source);
+    renderFileChars += chars;
+    while (renderFiles.size > 24 || renderFileChars > 4_000_000) {
+      const key = renderFiles.keys().next().value!;
+      renderFileChars -= renderFiles.get(key)!.chars;
+      renderFiles.delete(key);
+    }
+    return source;
+  } catch { drop(); return null; }
+};
+
+export const highlightFileLines = (
+  path: string, language: string, from: number, to: number, invalidate?: () => void,
+) => {
+  const source = readRenderFile(path);
+  return source ? highlightSourceLines(
+    `file\0${language}\0${path}\0${source.version}`, source.lines, language, from, to, invalidate,
+  ) : null;
+};
 
 const formatBytes = (bytes: number): string => {
   if (bytes < 1024) return `${bytes} B`;
@@ -316,7 +362,7 @@ const renderContent = (
   filePath: string,
   theme: Theme,
   options: CoreToolRenderOptions,
-  config: { lineNumbers?: boolean; firstLine?: number; emptyLabel: string; skipLabel: string },
+  config: { lineNumbers?: boolean; firstLine?: number; labels?: string[]; emptyLabel: string; skipLabel: string },
 ): RenderedCoreToolBody => {
   const limit = toolLimit({ ref: "", tool: config.lineNumbers ? "read" : "write" }, options);
   const selected = selectPreviewTextLines(content, limit);
@@ -359,12 +405,12 @@ const renderContent = (
       : language
         ? highlightCode(normalized.join("\n"), language, options.invalidate)
         : null;
-    const width = String((config.firstLine ?? 1) + selected.total - 1).length;
+    const width = config.labels ? Math.max(...config.labels.map((label) => label.length)) : String((config.firstLine ?? 1) + selected.total - 1).length;
     for (let index = 0; index < chunk.length; index++) {
       const entry = chunk[index]!;
       const text = highlighted?.[index] ?? theme.fg("toolOutput", normalized[index] || " ");
       if (config.lineNumbers) {
-        const lineNumber = String((config.firstLine ?? 1) + entry.index).padStart(width, " ");
+        const lineNumber = (config.labels?.[entry.index] ?? String((config.firstLine ?? 1) + entry.index)).padStart(width, " ");
         rendered.push(`${theme.fg("dim", `${lineNumber} │ `)}${text}`);
       } else {
         rendered.push(text);
@@ -635,6 +681,7 @@ const postEditFileRows = (
   parsed: Array<ParsedDiffLine | null>,
 ): Array<{ index: number; lineNumber: number }> => {
   const rows: Array<{ index: number; lineNumber: number }> = [];
+  if (parsed.some((line) => line?.anchored)) return rows;
   let lineDelta = 0;
   for (let index = 0; index < parsed.length; index++) {
     const line = parsed[index];
@@ -671,6 +718,7 @@ const highlightRemovedDiffLines = (
   cwd: string,
   invalidate?: () => void,
 ): Map<number, string> | null => {
+  if (parsed.some((line) => line?.anchored)) return null;
   // The first contiguous hunk's removed lines plus their surrounding context.
   let start = 0;
   while (start < parsed.length && !parsed[start]) start++;
@@ -712,21 +760,9 @@ const highlightRemovedDiffLines = (
   const anchor = contextBefore.length > 0 ? contextBefore[0]!.n : firstRemoved;
 
   const absolute = resolve(cwd, filePath);
-  let stat;
-  try {
-    stat = statSync(absolute);
-  } catch {
-    return null;
-  }
-  if (!stat.isFile() || stat.size > MAX_HIGHLIGHT_CHARS) return null;
-  let text: string;
-  try {
-    text = readFileSync(absolute, "utf8");
-  } catch {
-    return null;
-  }
-  if (text.includes("\0")) return null;
-  const fileLines = text.replace(/\r\n?/g, "\n").split("\n").map(expandTabs);
+  const source = readRenderFile(absolute);
+  if (!source || source.size > MAX_HIGHLIGHT_CHARS) return null;
+  const fileLines = source.lines;
   // Context (post-edit, 1-based) must still match the file, or the pre-edit
   // reconstruction would be anchored to the wrong place.
   for (const line of block) {
@@ -931,9 +967,65 @@ const renderRead = (
   if (!options.expanded && !options.settings.readContentPreview) return null;
   const output = resultOutput(audit);
   if (output === undefined) return null;
-  const filePath = argString(audit, "path") ?? "";
+  const filePath = argString(audit, "path") ?? argString(audit, "file") ?? "";
   if (/^Read image file/i.test(output)) {
     return { lines: [theme.fg("dim", escapeControlChars(output))], hidden: 0 };
+  }
+  const source = filePath ? readRenderFile(resolve(options.cwd, filePath)) : null;
+  const rows = output.split("\n");
+  const firstLine = Math.max(1, Math.floor(numberOf(audit.args?.offset) ?? 1));
+  // Raw source wins over any apparent protocol, including literal anchor examples.
+  const rawMatches = source && rows.every((row, index) => source.lines[firstLine - 1 + index] === expandTabs(row));
+  if (source && !rawMatches && rows.some((row) => parseAnchorLine(row))) {
+    const sections: Array<{ text: string; firstLine: number; labels?: string[] }> = [];
+    let nextLine = firstLine;
+    let restored = false;
+    for (let index = 0; index < rows.length;) {
+      const header = /^=== Lines (\d+)-(\d+) of (\d+) ===$/.exec(rows[index]!);
+      if (header) nextLine = Number(header[1]);
+      const anchor = parseAnchorLine(rows[index]!);
+      if (!anchor) {
+        sections.push({ text: rows[index++]!, firstLine: nextLine });
+        continue;
+      }
+      const start = index;
+      const from = anchor.position ?? nextLine;
+      const anchors: NonNullable<ReturnType<typeof parseAnchorLine>>[] = [];
+      while (index < rows.length) {
+        const row = parseAnchorLine(rows[index]!);
+        if (!row || (row.position !== undefined && row.position !== from + anchors.length)) break;
+        anchors.push(row);
+        index++;
+      }
+      const original = rows.slice(start, index);
+      const originalMatches = original.every((row, offset) => source.lines[from - 1 + offset] === expandTabs(row));
+      const verified = !originalMatches && anchors.every((row, offset) => source.lines[from - 1 + offset] === expandTabs(row.content));
+      sections.push({
+        text: verified ? anchors.map((row) => row.content).join("\n") : original.join("\n"),
+        firstLine: from,
+        ...(verified ? { labels: anchors.map((row) => row.label) } : {}),
+      });
+      restored ||= verified;
+      nextLine = from + anchors.length;
+    }
+    if (restored) {
+      const lines: string[] = [];
+      let hidden = 0;
+      for (const section of sections) {
+        if (!section.labels) {
+          lines.push(theme.fg("dim", escapeControlChars(section.text)));
+          continue;
+        }
+        const body = renderContent(section.text, filePath, theme, options, {
+          lineNumbers: options.settings.readLineNumbers, firstLine: section.firstLine,
+          labels: section.labels, emptyLabel: "Empty file", skipLabel: "Syntax highlighting skipped for large file",
+        });
+        lines.push(...body.lines);
+        hidden += body.hidden;
+      }
+      const limit = Math.min(toolLimit(audit, options), options.maxLines);
+      return { lines: lines.slice(0, limit), hidden: hidden + Math.max(0, lines.length - limit) };
+    }
   }
   const truncated = nativeTruncated(audit);
   const { content, notice } =
@@ -1070,7 +1162,7 @@ const renderEdit = (
   options: CoreToolRenderOptions,
 ): RenderedCoreToolBody | null => {
   if (!options.expanded && !options.settings.editDiffPreview) return null;
-  const filePath = argString(audit, "path") ?? "";
+  const filePath = argString(audit, "path") ?? argString(audit, "file") ?? stringOf(resultDetails(audit)?.path) ?? "";
   const actual = stringOf(resultDetails(audit)?.diff);
   if (actual) {
     const summary = summarizeDiff(actual);

@@ -1,5 +1,5 @@
 // Adapted from pi-code-previews; see THIRD_PARTY_NOTICES.md.
-export type ParsedDiffLine = { kind: "+" | "-" | " "; lineNumber: string; content: string };
+export type ParsedDiffLine = { kind: "+" | "-" | " "; lineNumber: string; content: string; anchored?: boolean };
 export type AddedDiffLine = ParsedDiffLine & { kind: "+" };
 export type RemovedDiffLine = ParsedDiffLine & { kind: "-" };
 
@@ -15,7 +15,20 @@ function normalizedDiffLineNumber(line: ParsedDiffLine | null): string {
   return line?.lineNumber.trim() ?? "";
 }
 
+export function parseAnchorLine(line: string): { label: string; content: string; position: number | undefined } | null {
+  const match = /^(?:(\d+)#)?([A-Za-z0-9]{3}| {3})│(.*)$/.exec(line);
+  if (!match) return null;
+  const position = match[1] === undefined ? undefined : Number(match[1]);
+  if (position !== undefined && (!Number.isSafeInteger(position) || position < 1)) return null;
+  return { label: match[1] ?? match[2]!, content: match[3]!, position };
+}
+
 export function parseDiffLine(line: string): ParsedDiffLine | null {
+  const kind = line[0];
+  const anchor = parseAnchorLine(line.slice(1));
+  if (anchor && (kind === "+" || kind === "-" || kind === " ")) {
+    return { kind, lineNumber: anchor.label, content: anchor.content, anchored: true };
+  }
   const numbered = line.match(/^([+\- ])(\s*\d+)\s(.*)$/);
   if (numbered) {
     const [, kind, lineNumber, content] = numbered;

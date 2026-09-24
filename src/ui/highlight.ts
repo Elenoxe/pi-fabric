@@ -1,4 +1,3 @@
-import { readFileSync, statSync } from "node:fs";
 import { basename, extname } from "node:path";
 import { shikiLanguages, shikiThemeType } from "./shiki-catalog.js";
 import type { GrammarState, Highlighter } from "shiki";
@@ -14,17 +13,6 @@ const MAX_HIGHLIGHT_CHARS =
   Number.isFinite(configuredMaxHighlightChars) && configuredMaxHighlightChars > 0
     ? configuredMaxHighlightChars
     : 80_000;
-const configuredFileHighlightMaxSourceChars = Number.parseInt(
-  process.env.CODE_PREVIEW_FILE_HIGHLIGHT_MAX_CHARS ?? "",
-  10,
-);
-// Files larger than this never enter full-file tokenization; their previews
-// fall back to per-run tokenization. Bounds worst-case background work.
-const FILE_HIGHLIGHT_MAX_SOURCE_CHARS =
-  Number.isFinite(configuredFileHighlightMaxSourceChars) &&
-  configuredFileHighlightMaxSourceChars > 0
-    ? configuredFileHighlightMaxSourceChars
-    : 200_000;
 // One background slice covers ~5-10ms of shiki work on heavy grammars
 // (measured ~106ms for a 1.3k-line TS file), keeping each event-loop tick
 // well under one frame.
@@ -564,9 +552,6 @@ interface FileHighlightWaiter {
 interface FileHighlightEntry {
   highlighter: Highlighter;
   lang: string;
-  // Present only for disk-backed entries; virtual documents omit both.
-  mtimeMs?: number;
-  size?: number;
   sourceLines: string[];
   lines: string[];
   state: GrammarState | undefined;
@@ -586,7 +571,6 @@ let fileHighlightChars = 0;
 const fileHighlightQueue: FileHighlightEntry[] = [];
 let fileHighlightQueueScheduled = false;
 
-const expandFileLineTabs = (text: string): string => text.replace(/\t/g, "    ");
 
 const dropFileHighlightEntry = (key: string, entry: FileHighlightEntry): void => {
   if (fileHighlightCache.get(key) !== entry) return;
@@ -708,86 +692,6 @@ const scheduleFileHighlight = (entry: FileHighlightEntry): void => {
   setImmediate(pumpFileHighlightQueue);
 };
 
-/**
- * Highlight a line range of an on-disk file with full grammar state, returning
- * per-line { raw, ansi } entries for 0-based [from, to). `raw` is the
- * tab-expanded source line so callers can verify the rendered content still
- * matches the file. Returns null while coverage has not reached `to` (or when
- * the file is unusable); passing `invalidate` repaints as soon as the range is
- * covered and pumps bounded background tokenization — parked shiki
- * GrammarState, one ~5-10ms slice per event-loop tick, work only while
- * waiters exist.
- */
-export function highlightFileLines(
-  filePath: string,
-  lang: string,
-  from: number,
-  to: number,
-  invalidate?: () => void,
-): FileHighlightLine[] | null {
-  if (!enabled || !lang || !filePath || to <= from || from < 0) return null;
-  if (!highlighter || readyTheme !== currentTheme) {
-    requestInit(invalidate);
-    return null;
-  }
-  const shikiLang = normalizeLanguage(lang);
-  if (!(shikiLang in shikiLanguages())) return null;
-  if (!loadedLanguages.has(shikiLang)) {
-    requestLanguageLoad(shikiLang, invalidate);
-    return null;
-  }
-  let stat;
-  try {
-    stat = statSync(filePath);
-  } catch {
-    return null;
-  }
-  if (!stat.isFile() || stat.size > FILE_HIGHLIGHT_MAX_SOURCE_CHARS) return null;
-  const key = `${currentTheme}\0${shikiLang}\0${filePath}`;
-  let entry = fileHighlightCache.get(key);
-  if (entry && (entry.mtimeMs !== stat.mtimeMs || entry.size !== stat.size)) {
-    dropFileHighlightEntry(key, entry);
-    entry = undefined;
-  }
-  if (!entry) {
-    let text: string;
-    try {
-      text = readFileSync(filePath, "utf8");
-    } catch {
-      return null;
-    }
-    if (text.includes("\0")) return null;
-    const sourceLines = text
-      .replace(/\r\n?/g, "\n")
-      .split("\n")
-      .map(expandFileLineTabs);
-    entry = {
-      highlighter,
-      lang: shikiLang,
-      mtimeMs: stat.mtimeMs,
-      size: stat.size,
-      sourceLines,
-      lines: [],
-      state: undefined,
-      target: 0,
-      waiters: [],
-      stale: false,
-      chars: sourceLines.reduce((total, line) => total + line.length, 0),
-    };
-    fileHighlightCache.set(key, entry);
-    fileHighlightChars += entry.chars;
-    evictFileHighlightCache();
-    if (entry.stale) {
-      // Evicted immediately by the char budget; treat as unusable.
-      entry.waiters = [];
-      return null;
-    }
-  } else {
-    fileHighlightCache.delete(key);
-    fileHighlightCache.set(key, entry);
-  }
-  return fileHighlightRange(entry, from, to, invalidate);
-}
 
 /**
  * Highlight a line range of an in-memory document with full grammar state.
@@ -815,6 +719,7 @@ export function highlightSourceLines(
     requestLanguageLoad(shikiLang, invalidate);
     return null;
   }
+  cacheKey = `${currentTheme}\0${shikiLang}\0${cacheKey}`;
   let entry = fileHighlightCache.get(cacheKey);
   if (!entry) {
     entry = {

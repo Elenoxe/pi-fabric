@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { highlightCode, highlightFileLines, languageFromPath } from "./highlight.js";
+import { highlightCode, highlightSourceLines, languageFromPath } from "./highlight.js";
 import { safeText } from "./format.js";
 import type { FabricUiStateEntry } from "./types.js";
 
@@ -94,10 +94,10 @@ export const renderStateFilePreview = (
 ): string[] => {
   if (width <= 0 || maxLines <= 0) return [];
   const shown = preview.lines.slice(0, maxLines);
-  // Prefer the file's tokenization coverage so long comments/strings opened
-  // near the top highlight state-correctly even in short excerpts.
-  const fileLines = highlightFileLines(
-    preview.absolutePath,
+  // Tokenize the same snapshot used for this preview, without another read.
+  const fileLines = highlightSourceLines(
+    `state\0${preview.absolutePath}\0${preview.content}`,
+    preview.lines.map((line) => line.replace(/\t/g, "    ")),
     preview.language,
     0,
     shown.length,

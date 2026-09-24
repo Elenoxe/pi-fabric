@@ -5,10 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   configureHighlighting,
   highlightCode,
-  highlightFileLines,
   initHighlighting,
 } from "../src/ui/highlight.js";
 import {
+  highlightFileLines,
   coreToolPreviewEnabled,
   coreToolRendererEnabled,
   coreToolTitle,
