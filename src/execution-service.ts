@@ -26,7 +26,7 @@ import {
   type FabricConfig,
 } from "./config.js";
 import {
-  ActionRegistry,
+  type ActionRegistry,
   fabricActionListLimit,
   type FabricCallAudit,
   type FabricRegistryActivityEvent,
@@ -532,7 +532,7 @@ export class FabricExecutionService {
                 runtimeSignal,
                 () =>
                   this.registry
-                    .providers()
+                    .providers(callContext)
                     .filter((provider) =>
                       !callContext.capabilityView ||
                       Object.values(callContext.capabilityView.bindings)

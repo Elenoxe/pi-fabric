@@ -145,10 +145,13 @@ See the [interface & commands reference](docs/interface.md) for every view, keyb
 - [Interface & commands](docs/interface.md): dashboard, settings, keybindings, slash commands, and headless runs.
 - [Agents, actors & mesh](docs/agents.md): model handoff, `/fabric prewalk`, runners, transports, actors, councils, recursive queries, and durable coordination.
 - [Durable residency through Pi](docs/residency-runtime.md): background host lifecycle and the Pi-runtime launcher boundary.
-- [Jev System One programs](docs/jev.md): typed judgments, `/login jev`, `openrouter`, or `vercel-ai-gateway` credentials, foreground/background loops, budgets, and optional Browser Harness CDP integration.
+- [External connector components](docs/harnesses.md): connector-owned browser/macOS extensions using the generic component lifecycle. No connector-specific runtime registration; works with ordinary models, deterministic code, or Jev.
+- [Jev System One programs](docs/jev.md): typed judgments, `/login jev`, `openrouter`, or `vercel-ai-gateway` credentials, foreground/background loops, and budgets.
 - [Components & committed capabilities](docs/components.md): supervised effects, exact requirements, external per-model guidance and execution-profile replacement, rolling provider generations, actor commitments, and both formal calculi.
 - [External providers](docs/providers.md): the versioned provider protocol for extensions.
 - [Architecture & security](docs/architecture.md): the host bridge, sandboxing, tool-call robustness, and limits.
+- [Verified policy kernels](docs/verified-kernels.md): executable Bend proofs, production acceptance gates, regeneration, and the trusted boundary.
+- [Provider capabilities](docs/provider-capabilities.md): proved dispatch, authority attenuation, lifecycle transitions, cancellation/cleanup contracts, and trust boundaries.
 - [Catalog repairs](docs/repairs.md): unique extra keys and unknown actions promoted into silent schema maps.
 - [Tool entropy](docs/entropy.md): static capability-preserving normal forms, deterministic invocation-friction metrics, bounded repair witnesses, and offline `certify:entropy` proof checks.
 - [Speculative PTC](docs/speculation.md): pre-launching literal read calls while the program streams, with epoch + freshness guarantees.

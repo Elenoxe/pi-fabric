@@ -430,10 +430,6 @@ export class FabricRuntimeState {
       this.#managedHost,
     );
     const enforceSchema = this.#config.schema.mode === "enforce";
-    if (!this.#managedHost && !enforceSchema) {
-      const { browserHarnessComponent } = await import("./jev/browser.js");
-      this.componentCatalog.register(browserHarnessComponent, { overwrite: true });
-    }
     await builtins.tools(context.cwd, this.#config, this.capturedTools, {
       jobs: this.shellJobs,
       getHangMs: () => this.#config?.executor.shellHangMs ?? DEFAULT_SHELL_HANG_MS,
@@ -613,6 +609,21 @@ export class FabricRuntimeState {
           target: "participant",
           includeSlots: false,
         }).appendText || undefined;
+      },
+      resolveHandoffCompactionBudget: async (modelKey, cwd) => {
+        const { model } = resolveParticipantPiModel(modelKey);
+        // Load host settings only for an actual compacted handoff. Project
+        // trust does not transfer implicitly to a different working directory.
+        const { SettingsManager } = await import("@earendil-works/pi-coding-agent");
+        const settings = SettingsManager.create(cwd, resolveAgentDir(), {
+          projectTrusted: !this.#managedHost && cwd === context.cwd && context.isProjectTrusted(),
+        }).getCompactionSettings(model);
+        return {
+          contextWindow: model.contextWindow,
+          targetContextRatio: this.#config?.compaction.targetContextRatio ?? DEFAULT_FABRIC_CONFIG.compaction.targetContextRatio,
+          reserveTokens: settings.reserveTokens,
+          keepRecentTokens: settings.keepRecentTokens,
+        };
       },
       preparePiModel: async (modelKey) => {
         const resolved = resolveParticipantPiModel(modelKey);
